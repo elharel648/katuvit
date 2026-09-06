@@ -16,9 +16,14 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+import time
+
+import firebase_admin
 import google.auth
-from fastapi import Body, FastAPI
+from fastapi import Body, FastAPI, Header
 from fastapi.responses import JSONResponse
+from firebase_admin import auth as fb_auth
+from firebase_admin import firestore as fb_firestore
 from google.auth.transport import requests as google_requests
 from google.cloud import storage
 
@@ -30,11 +35,15 @@ from captions import (
     MEDIA_ID_RE,
     MODEL_ID,
     TEMPLATES,
+    FREE_LIFETIME_VIDEOS,
+    PRO_MONTHLY_VIDEOS,
     build_ass,
     check_key,
     clamp_font,
+    consume,
     normalize_lines,
     probe_video,
+    quota_decision,
     video_filter,
 )
 
@@ -43,8 +52,20 @@ API_KEY = os.environ.get("KATUVIT_API_KEY", "")
 SIGNED_PUT_MINUTES = 30
 SIGNED_GET_MINUTES = 120
 UPLOAD_CONTENT_TYPE = "application/octet-stream"
+# every request must carry a Firebase ID token; the shared api_key stays as a second lock
+REQUIRE_AUTH = os.environ.get("REQUIRE_AUTH", "1") == "1"
 
 _model = None
+_fb_app = None
+_db = None
+
+
+def db():
+    global _fb_app, _db
+    if _db is None:
+        _fb_app = firebase_admin.initialize_app()  # ADC on Cloud Run (runtime service account)
+        _db = fb_firestore.client()
+    return _db
 
 
 def get_model():
@@ -108,6 +129,74 @@ def _authorized(body: dict) -> bool:
     return isinstance(body, dict) and check_key(body.get("api_key"), API_KEY)
 
 
+class AuthError(Exception):
+    def __init__(self, code: str, status: int = 401):
+        super().__init__(code)
+        self.code, self.status = code, status
+
+
+def _uid(authorization: str | None) -> str | None:
+    """uid from 'Authorization: Bearer <Firebase ID token>'; None when auth is optional and absent."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        if REQUIRE_AUTH:
+            raise AuthError("auth_required")
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        db()  # ensure firebase_admin is initialised
+        return fb_auth.verify_id_token(token)["uid"]
+    except Exception:
+        raise AuthError("bad_token")
+
+
+def _user_ref(uid: str):
+    return db().collection("users").document(uid)
+
+
+def _load_user(uid: str) -> dict:
+    snap = _user_ref(uid).get()
+    if snap.exists:
+        return snap.to_dict() or {}
+    fresh = {"plan": "free", "credits": 0, "free_used": 0, "monthly_used": 0,
+             "videos_total": 0, "created_at": time.time()}
+    _user_ref(uid).set(fresh)
+    return fresh
+
+
+def _consume_in_transaction(uid: str, kind: str) -> dict:
+    """Re-check and consume atomically so two parallel uploads can't both pass."""
+    transaction = db().transaction()
+    ref = _user_ref(uid)
+
+    @fb_firestore.transactional
+    def run(tx):
+        snap = ref.get(transaction=tx)
+        user = snap.to_dict() if snap.exists else {}
+        allowed, k = quota_decision(user, time.time())
+        if not allowed:
+            raise AuthError("quota_exceeded", 402)
+        updated = consume(user, k)
+        tx.set(ref, updated, merge=True)
+        return updated
+
+    return run(transaction)
+
+
+def _entitlements(user: dict) -> dict:
+    now = time.time()
+    pro_active = user.get("plan") == "pro" and float(user.get("pro_until") or 0) > now
+    return {
+        "plan": "pro" if pro_active else "free",
+        "pro_until": user.get("pro_until"),
+        "credits": int(user.get("credits") or 0),
+        "free_used": int(user.get("free_used") or 0),
+        "free_left": max(0, FREE_LIFETIME_VIDEOS - int(user.get("free_used") or 0)),
+        "monthly_used": int(user.get("monthly_used") or 0),
+        "monthly_cap": PRO_MONTHLY_VIDEOS,
+        "videos_total": int(user.get("videos_total") or 0),
+    }
+
+
 def _valid_media_id(body: dict) -> str | None:
     media_id = str(body.get("media_id", ""))
     return media_id if MEDIA_ID_RE.match(media_id) else None
@@ -119,10 +208,49 @@ def healthz():
     return {"ok": True, "model_loaded": _model is not None, "bucket": bool(BUCKET)}
 
 
-@app.post("/upload-url")
-def upload_url(body: dict = Body(...)):
+@app.post("/me")
+def me(body: dict = Body(...), authorization: str | None = Header(default=None)):
+    """Entitlements for the signed-in user (creates the user document on first call)."""
     if not _authorized(body):
         return _err("unauthorized", 401)
+    try:
+        uid = _uid(authorization)
+    except AuthError as e:
+        return _err(e.code, e.status)
+    return _entitlements(_load_user(uid))
+
+
+@app.post("/delete-account")
+def delete_account(body: dict = Body(...), authorization: str | None = Header(default=None)):
+    """Apple requires in-app account deletion: user doc, media records, then the auth user."""
+    if not _authorized(body):
+        return _err("unauthorized", 401)
+    try:
+        uid = _uid(authorization)
+    except AuthError as e:
+        return _err(e.code, e.status)
+    for snap in db().collection("media").where("uid", "==", uid).stream():
+        snap.reference.delete()
+    _user_ref(uid).delete()
+    try:
+        fb_auth.delete_user(uid)
+    except Exception:
+        pass  # already gone
+    return {"ok": True}
+
+
+@app.post("/upload-url")
+def upload_url(body: dict = Body(...), authorization: str | None = Header(default=None)):
+    if not _authorized(body):
+        return _err("unauthorized", 401)
+    try:
+        uid = _uid(authorization)
+    except AuthError as e:
+        return _err(e.code, e.status)
+    # refuse early, before the user uploads 50MB for nothing
+    allowed, kind = quota_decision(_load_user(uid), time.time())
+    if not allowed:
+        return _err("quota_exceeded", 402, **_entitlements(_load_user(uid)))
     media_id = uuid.uuid4().hex
     blob = _bucket().blob(f"src/{media_id}")
     return {
@@ -135,12 +263,19 @@ def upload_url(body: dict = Body(...)):
 
 
 @app.post("/transcribe")
-def transcribe(body: dict = Body(...)):
+def transcribe(body: dict = Body(...), authorization: str | None = Header(default=None)):
     if not _authorized(body):
         return _err("unauthorized", 401)
+    try:
+        uid = _uid(authorization)
+    except AuthError as e:
+        return _err(e.code, e.status)
     media_id = _valid_media_id(body)
     if not media_id:
         return _err("bad_media_id", 400)
+    allowed, _kind = quota_decision(_load_user(uid), time.time())
+    if not allowed:
+        return _err("quota_exceeded", 402, **_entitlements(_load_user(uid)))
 
     blob = _bucket().blob(f"src/{media_id}")
     if not blob.exists():
@@ -178,16 +313,35 @@ def transcribe(body: dict = Body(...)):
             }
             for seg in segments
         ]
-    return {"segments": out, "duration": round(meta.duration, 1), "media_id": media_id}
+    # success → pay for it atomically and remember who owns this media (and whether it's free-tier)
+    try:
+        updated = _consume_in_transaction(uid, _kind)
+    except AuthError as e:
+        return _err(e.code, e.status)
+    db().collection("media").document(media_id).set({
+        "uid": uid, "created_at": time.time(), "paid_with": _kind,
+        "watermark": _kind == "free", "duration": round(meta.duration, 1),
+    })
+    return {"segments": out, "duration": round(meta.duration, 1), "media_id": media_id,
+            "entitlements": _entitlements(updated)}
 
 
 @app.post("/burn")
-def burn(body: dict = Body(...)):
+def burn(body: dict = Body(...), authorization: str | None = Header(default=None)):
     if not _authorized(body):
         return _err("unauthorized", 401)
+    try:
+        uid = _uid(authorization)
+    except AuthError as e:
+        return _err(e.code, e.status)
     media_id = _valid_media_id(body)
     if not media_id:
         return _err("bad_media_id", 400)
+    media_doc = db().collection("media").document(media_id).get()
+    media = media_doc.to_dict() if media_doc.exists else None
+    if not media or media.get("uid") != uid:
+        return _err("media_not_found", 404)
+    watermark = bool(media.get("watermark"))
     try:
         lines = normalize_lines(body.get("lines"))
     except ValueError:
@@ -209,7 +363,7 @@ def burn(body: dict = Body(...)):
         hdr = probe_video(src)["hdr"]
         ass_path = os.path.join(td, "captions.ass")
         with open(ass_path, "w", encoding="utf-8") as f:
-            f.write(build_ass(lines, template, font_size))
+            f.write(build_ass(lines, template, font_size, watermark=watermark))
         out = os.path.join(td, "out.mp4")
         try:
             subprocess.run(
@@ -230,5 +384,6 @@ def burn(body: dict = Body(...)):
     return {
         "download_url": signed_url(out_blob, "GET", SIGNED_GET_MINUTES),
         "bytes": size,
+        "watermark": watermark,
         "expires_in_minutes": SIGNED_GET_MINUTES,
     }

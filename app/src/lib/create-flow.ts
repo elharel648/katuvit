@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { uploadAndTranscribe } from './api';
+import { QuotaError, uploadAndTranscribe } from './api';
 import { startSession } from './session';
 
 export type CreatePhase = 'idle' | 'uploading' | 'transcribing';
@@ -69,6 +69,10 @@ export async function startCreateFlow() {
     if (router.canDismiss()) router.dismissAll();
     router.push('/editor');
   } catch (e) {
+    if (e instanceof QuotaError) {
+      setTimeout(() => router.push('/paywall'), 400);
+      return;
+    }
     // an instant server rejection lands while the picker sheet is still animating
     // away, and iOS silently drops alerts presented during a modal dismissal
     const message = e instanceof Error ? e.message : 'נסו שוב';

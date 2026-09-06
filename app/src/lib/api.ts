@@ -1,6 +1,8 @@
 import * as LegacyFS from 'expo-file-system/legacy';
 
+import { getIdToken } from './auth';
 import { KATUVIT_API_KEY, WORKER_BASE_URL } from './config';
+import { setEntitlements, type Entitlements } from './entitlements';
 import type { TranscriptSegment, Word } from './types';
 
 /**
@@ -20,7 +22,20 @@ const ERROR_HE: Record<string, string> = {
   burn_failed: 'הצריבה נכשלה — נסו שוב',
   no_lines: 'אין כתוביות לצרוב',
   bad_media_id: 'משהו השתבש בזיהוי הסרטון — העלו אותו שוב',
+  auth_required: 'צריך להתחבר מחדש — סגרו ופתחו את האפליקציה',
+  bad_token: 'ההתחברות פגה — סגרו ופתחו את האפליקציה',
+  quota_exceeded: 'נגמרו הסרטונים בחשבון',
 };
+
+/** thrown when the server refuses for lack of quota — the UI opens the paywall */
+export class QuotaError extends Error {
+  entitlements: Entitlements | null;
+  constructor(entitlements: Entitlements | null) {
+    super(ERROR_HE.quota_exceeded);
+    this.name = 'QuotaError';
+    this.entitlements = entitlements;
+  }
+}
 
 function messageFor(body: string | undefined, status: number): string {
   try {
@@ -50,13 +65,14 @@ export async function ensureCacheDir(): Promise<void> {
 }
 
 async function postJson<T>(path: string, body: object, timeoutMs: number): Promise<T> {
+  const token = await getIdToken();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res: Response;
   try {
     res = await fetch(`${WORKER_BASE_URL}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ api_key: KATUVIT_API_KEY, ...body }),
       signal: controller.signal,
     });
@@ -69,6 +85,15 @@ async function postJson<T>(path: string, body: object, timeoutMs: number): Promi
   }
   clearTimeout(timer);
   const text = await res.text().catch(() => '');
+  if (res.status === 402) {
+    let ent: Entitlements | null = null;
+    try {
+      const { error: _e, ...rest } = JSON.parse(text);
+      ent = rest as Entitlements;
+      setEntitlements(ent);
+    } catch {}
+    throw new QuotaError(ent);
+  }
   if (!res.ok) throw new Error(messageFor(text, res.status));
   try {
     return JSON.parse(text) as T;
@@ -81,6 +106,19 @@ export interface TranscribeResult {
   segments: TranscriptSegment[];
   duration: number;
   media_id: string;
+  entitlements?: Entitlements;
+}
+
+/** entitlements for the signed-in user; also creates the user record on first call */
+export async function fetchMe(): Promise<Entitlements> {
+  const e = await postJson<Entitlements>('/me', {}, 30_000);
+  setEntitlements(e);
+  return e;
+}
+
+/** server-side account deletion (user record, media records, auth user) */
+export async function deleteAccountOnServer(): Promise<void> {
+  await postJson<{ ok: boolean }>('/delete-account', {}, 60_000);
 }
 
 export interface UploadCallbacks {
@@ -129,7 +167,9 @@ export async function uploadAndTranscribe(
   callbacks.onUploaded?.();
 
   // transcription of a 3-minute clip on a cold GPU can take a while
-  return postJson<TranscribeResult>('/transcribe', { media_id: ticket.media_id }, 600_000);
+  const result = await postJson<TranscribeResult>('/transcribe', { media_id: ticket.media_id }, 600_000);
+  if (result.entitlements) setEntitlements(result.entitlements);
+  return result;
 }
 
 export interface BurnParams {

@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import {
@@ -13,6 +14,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { deleteAccountOnServer, fetchMe } from '@/lib/api';
+import { currentUser, deleteLocalUser, ensureSignedIn, isGuest, providerLabel } from '@/lib/auth';
+import { quotaLabel, useEntitlements } from '@/lib/entitlements';
 import {
   CAPTION_SIZE_LABELS,
   updateSettings,
@@ -58,7 +62,32 @@ function Row({
 
 export default function SettingsScreen() {
   const settings = useSettings();
+  const ent = useEntitlements();
   const [showPrivacy, setShowPrivacy] = useState(false);
+
+  const confirmDelete = () =>
+    Alert.alert(
+      'למחוק את החשבון?',
+      'הסרטונים החינמיים והקרדיטים שנשארו ייעלמו. אי אפשר לבטל.',
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'מחיקה',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccountOnServer();
+              await deleteLocalUser();
+              await ensureSignedIn();
+              await fetchMe().catch(() => {});
+              Alert.alert('החשבון נמחק', 'נפתח לך חשבון אורח חדש.');
+            } catch (e) {
+              Alert.alert('המחיקה נכשלה', e instanceof Error ? e.message : 'נסו שוב');
+            }
+          },
+        },
+      ],
+    );
 
   const pickQuality = () =>
     Alert.alert('איכות ייצוא', 'באיזו רזולוציה לייצא את הסרטונים?', [
@@ -123,10 +152,26 @@ export default function SettingsScreen() {
         <Text style={styles.sectionHeader}>חשבון</Text>
         <View style={styles.group}>
           <Row
-            symbol="crown.fill"
-            label="שדרוג ל-Pro"
-            value="נפתח בהשקה"
+            symbol="person.crop.circle"
+            label={isGuest() ? 'חשבון אורח' : `מחובר עם ${providerLabel()}`}
+            value={currentUser()?.uid.slice(0, 6) ?? ''}
           />
+          <View style={styles.divider} />
+          <Row
+            symbol="crown.fill"
+            label="הסרטונים שלי"
+            value={quotaLabel(ent) ?? '…'}
+            onPress={() => router.push('/paywall')}
+          />
+          <View style={styles.divider} />
+          <Row
+            symbol="apple.logo"
+            label="התחברות עם Apple / Google"
+            value="בקרוב"
+            onPress={() => Alert.alert('בקרוב', 'ההתחברות עם Apple ו-Google נפתחת עם חשבון המפתח. הקרדיטים של חשבון האורח יעברו איתך.')}
+          />
+          <View style={styles.divider} />
+          <Row symbol="trash" label="מחיקת חשבון" onPress={confirmDelete} />
         </View>
 
         <Text style={styles.sectionHeader}>עזרה</Text>

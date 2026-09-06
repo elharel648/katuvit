@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useCreatePhase } from '@/lib/create-flow';
+import { quotaLabel, useEntitlements } from '@/lib/entitlements';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
 import { HeroAvatar } from '@/components/HeroAvatar';
@@ -55,6 +56,7 @@ export default function HomeScreen() {
   const [specimenIdx, setSpecimenIdx] = useState(0);
   const session = getSession();
   const create = useCreatePhase();
+  const ent = useEntitlements();
 
   useEffect(() => {
     const t = setInterval(
@@ -80,10 +82,10 @@ export default function HomeScreen() {
       {/* header */}
       <View style={styles.header}>
         <Text style={styles.wordmark}>כתוביות</Text>
-        <Pressable onPress={() => Alert.alert('Pro', 'מסלול Pro נפתח בקרוב')}>
+        <Pressable onPress={() => router.push('/paywall')} accessibilityRole="button" accessibilityLabel="הסרטונים שלי">
           <BlurView intensity={30} tint="dark" style={styles.proPill}>
             <SymbolView name="crown.fill" size={13} tintColor={colors.accent} />
-            <Text style={styles.proPillText}>Pro</Text>
+            <Text style={styles.proPillText}>{quotaLabel(ent) ?? 'Pro'}</Text>
           </BlurView>
         </Pressable>
       </View>

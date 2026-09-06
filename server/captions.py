@@ -35,6 +35,11 @@ TEMPLATES = {
 DEFAULT_TEMPLATE = "bold"
 MAX_WORDS_PER_LINE = 24
 
+# ---- plans & quotas (the real protection against runaway cost) ----------------
+FREE_LIFETIME_VIDEOS = 3        # with watermark
+PRO_MONTHLY_VIDEOS = 60         # subscription cap
+WATERMARK_TEXT = "כתוביות"
+
 
 # ---- pure helpers (unit-tested in test_transcriber.py) -----------------------
 def ass_time(t: float) -> str:
@@ -151,7 +156,7 @@ def _events_for_line(line: dict, tpl: dict) -> list:
     return events
 
 
-def build_ass(lines: list, template: str, font_size: int = 108) -> str:
+def build_ass(lines: list, template: str, font_size: int = 108, watermark: bool = False) -> str:
     tpl = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
     border_style = 4 if tpl["box"] else 1
     back = "&H9A000000" if tpl["box"] else "&H80000000"
@@ -164,15 +169,50 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Cap,Noto Sans Hebrew,{font_size},{WHITE},{WHITE},{BLACK},{back},-1,0,0,0,100,100,0,0,{border_style},{tpl['outline']},{tpl['shadow']},2,70,70,480,177
+Style: Mark,Noto Sans Hebrew,42,&H60FFFFFF,&H60FFFFFF,&H60000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,9,0,44,120,177
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
     events = []
+    if watermark:
+        # free tier: small translucent brand mark, top-right, for the whole video
+        events.append(f"Dialogue: 1,0:00:00.00,9:59:59.00,Mark,,0,0,0,,{WATERMARK_TEXT}\n")
     for line in lines:
         for start, end, text in _events_for_line(line, tpl):
             events.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Cap,,0,0,0,,{text}\n")
     return header + "".join(events)
+
+
+def quota_decision(user: dict, now_ts: float) -> tuple[bool, str]:
+    """
+    Which allowance pays for the next video, in priority order:
+      pro (active subscription under its monthly cap) → credit (bought packs) → free (3 lifetime).
+    Returns (allowed, kind) where kind ∈ {'pro','credit','free','quota_exceeded'}.
+    user fields: plan, pro_until (unix ts), monthly_used, credits, free_used.
+    """
+    user = user or {}
+    if user.get("plan") == "pro" and float(user.get("pro_until") or 0) > now_ts:
+        if int(user.get("monthly_used") or 0) < PRO_MONTHLY_VIDEOS:
+            return True, "pro"
+    if int(user.get("credits") or 0) > 0:
+        return True, "credit"
+    if int(user.get("free_used") or 0) < FREE_LIFETIME_VIDEOS:
+        return True, "free"
+    return False, "quota_exceeded"
+
+
+def consume(user: dict, kind: str) -> dict:
+    """Field updates after a successful transcription paid by `kind`."""
+    user = dict(user or {})
+    if kind == "pro":
+        user["monthly_used"] = int(user.get("monthly_used") or 0) + 1
+    elif kind == "credit":
+        user["credits"] = max(0, int(user.get("credits") or 0) - 1)
+    elif kind == "free":
+        user["free_used"] = int(user.get("free_used") or 0) + 1
+    user["videos_total"] = int(user.get("videos_total") or 0) + 1
+    return user
 
 
 def check_key(provided, expected) -> bool:

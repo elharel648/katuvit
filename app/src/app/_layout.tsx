@@ -10,6 +10,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { fetchMe } from '@/lib/api';
+import { ensureSignedIn } from '@/lib/auth';
 import { loadSettings } from '@/lib/settings';
 import { colors } from '@/lib/theme';
 
@@ -25,6 +27,10 @@ export default function RootLayout() {
 
   useEffect(() => {
     loadSettings(); // persisted export quality / caption size, before any export
+    // guest identity + entitlements; failures are non-fatal here (the first API call retries)
+    ensureSignedIn()
+      .then(() => fetchMe())
+      .catch((e) => console.log('[auth] boot sign-in failed', e));
   }, []);
 
   useEffect(() => {
@@ -44,6 +50,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="editor" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
       </Stack>
     </>
   );

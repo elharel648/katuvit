@@ -22,6 +22,11 @@ from captions import (  # noqa: E402
     clamp_font,
     clean_caption_text,
     even_words,
+    consume,
+    quota_decision,
+    FREE_LIFETIME_VIDEOS,
+    PRO_MONTHLY_VIDEOS,
+    WATERMARK_TEXT,
     is_hdr,
     video_filter,
     normalize_lines,
@@ -172,6 +177,37 @@ def test_hdr_detection_and_filter_chain():
     hdr = video_filter(720, "/tmp/c.ass", hdr=True)
     assert hdr.startswith("scale=720:-2,zscale=t=linear") and "tonemap=" in hdr
     assert hdr.endswith("format=yuv420p,subtitles=/tmp/c.ass")   # subtitles burned after SDR conversion
+
+
+def test_quota_priority_pro_then_credits_then_free():
+    now = 1_000_000.0
+    assert quota_decision({}, now) == (True, "free")                       # brand-new user
+    assert quota_decision({"free_used": FREE_LIFETIME_VIDEOS}, now) == (False, "quota_exceeded")
+    assert quota_decision({"free_used": 3, "credits": 2}, now) == (True, "credit")
+    pro = {"plan": "pro", "pro_until": now + 10, "credits": 5, "free_used": 3}
+    assert quota_decision(pro, now) == (True, "pro")                        # pro before credits
+    capped = dict(pro, monthly_used=PRO_MONTHLY_VIDEOS)
+    assert quota_decision(capped, now) == (True, "credit")                  # cap hit → packs
+    expired = dict(pro, pro_until=now - 1, credits=0)
+    assert quota_decision(expired, now) == (False, "quota_exceeded")        # expired pro, nothing left
+    assert quota_decision(None, now) == (True, "free")                      # never raises
+
+
+def test_consume_updates_the_right_counter():
+    assert consume({}, "free")["free_used"] == 1
+    assert consume({"credits": 2}, "credit")["credits"] == 1
+    assert consume({"credits": 0}, "credit")["credits"] == 0               # never negative
+    assert consume({"monthly_used": 4}, "pro")["monthly_used"] == 5
+    assert consume({"videos_total": 9}, "free")["videos_total"] == 10
+
+
+def test_watermark_only_for_free_tier():
+    lines = normalize_lines([LINE])
+    assert WATERMARK_TEXT not in build_ass(lines, "bold", 100)
+    marked = build_ass(lines, "bold", 100, watermark=True)
+    assert "Style: Mark," in marked
+    assert f"9:59:59.00,Mark,,0,0,0,,{WATERMARK_TEXT}" in marked
+    assert marked.count("Dialogue:") == 4                                   # 3 karaoke events + 1 mark
 
 
 def test_media_id_regex():
