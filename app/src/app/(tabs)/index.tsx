@@ -117,40 +117,32 @@ export default function HomeScreen() {
           </View>
         </Pressable>
       ) : (
-        <View style={styles.hero}>
-          {/* ambient backdrop */}
-          <LinearGradient
-            colors={['#161C33', '#0E1220', '#0B0E17']}
-            start={{ x: 0.3, y: 0 }}
-            end={{ x: 0.7, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-          {/* warm glow blob behind the card */}
-          <View style={styles.glowBlob} pointerEvents="none" />
+        <View style={styles.emptyHero}>
+          {/* one message, real spoken Hebrew */}
+          <View style={styles.headlineBlock}>
+            <Text style={styles.headline}>תדברו.{'\n'}אנחנו נכתוב.</Text>
+            <Text style={styles.subline}>
+              כתוביות מדויקות לכל סרטון. עברית ואנגלית באותה נשימה.
+            </Text>
+          </View>
 
-          {/* the showcase: a reel card with captions, floating with depth */}
+          {/* one visual: the reel card, straight and quiet */}
           <View style={styles.showcaseZone}>
-            {/* back card peeking for depth */}
-            <View style={styles.reelCardBack} />
-
-            {/* front reel card */}
             <View style={styles.reelCard}>
               <LinearGradient
-                colors={['#2A2350', '#3A2A4E', '#1A1830']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                colors={['#241F45', '#1B1836', '#12101F']}
+                start={{ x: 0.2, y: 0 }}
+                end={{ x: 0.8, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              {/* 3D-style creator avatar */}
               <View style={styles.avatarGlow}>
                 <View style={styles.avatarRing}>
                   <HeroAvatar size={150} />
                 </View>
               </View>
 
-              {/* audio waveform — the core: voice becomes captions */}
               <View style={styles.waveRow}>
-                {WAVE_BARS.map((h, i) => (
+                {WAVE_BARS.slice(2, 10).map((h, i) => (
                   <Animated.View
                     key={i}
                     style={[
@@ -159,7 +151,7 @@ export default function HomeScreen() {
                       {
                         animationName: wavePulse,
                         animationDuration: '900ms',
-                        animationDelay: `${i * 70}ms`,
+                        animationDelay: `${i * 80}ms`,
                         animationIterationCount: 'infinite',
                         animationTimingFunction: 'ease-in-out',
                       },
@@ -168,7 +160,6 @@ export default function HomeScreen() {
                 ))}
               </View>
 
-              {/* the live caption, karaoke word-by-word */}
               <View
                 style={[
                   styles.reelCaption,
@@ -202,18 +193,7 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-
-            {/* floating glass chips for depth */}
-            <BlurView intensity={30} tint="dark" style={[styles.floatChip, styles.floatChipTop]}>
-              <View style={styles.dotLive} />
-              <Text style={styles.floatChipText}>עברית + English</Text>
-            </BlurView>
-            <BlurView intensity={30} tint="dark" style={[styles.floatChip, styles.floatChipBottom]}>
-              <SymbolView name="checkmark" size={11} tintColor={colors.accent} />
-              <Text style={styles.floatChipText}>סגנון · {template.name}</Text>
-            </BlurView>
           </View>
-
         </View>
       )}
 
@@ -296,50 +276,54 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.bold,
   },
-  glowBlob: {
-    position: 'absolute',
-    top: '18%',
-    alignSelf: 'center',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: 'rgba(255,213,46,0.10)',
-    // soft radial-ish glow via large blur substitute
-    opacity: 0.9,
+  emptyHero: {
+    flex: 1,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+  },
+  headlineBlock: {
+    gap: spacing.sm,
+    alignItems: 'flex-end',
+  },
+  headline: {
+    color: colors.text,
+    fontSize: 34,
+    lineHeight: 40,
+    fontFamily: fonts.black,
+    textAlign: 'right',
+  },
+  subline: {
+    color: colors.textDim,
+    fontSize: 15,
+    lineHeight: 22,
+    fontFamily: fonts.regular,
+    textAlign: 'right',
+    maxWidth: 300,
   },
   showcaseZone: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  reelCardBack: {
-    position: 'absolute',
-    width: 190,
-    height: 320,
-    borderRadius: 26,
-    backgroundColor: '#20263F',
-    transform: [{ rotate: '-8deg' }, { translateX: 26 }],
-    opacity: 0.6,
+    paddingBottom: spacing.md,
   },
   reelCard: {
-    width: 210,
-    height: 356,
-    borderRadius: 28,
+    width: 232,
+    height: 372,
+    borderRadius: 30,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 26,
-    transform: [{ rotate: '3deg' }],
+    paddingBottom: 30,
     shadowColor: '#000',
-    shadowOpacity: 0.5,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 16 },
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    shadowOpacity: 0.55,
+    shadowRadius: 30,
+    shadowOffset: { width: 0, height: 20 },
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   avatarGlow: {
     position: 'absolute',
-    top: 34,
+    top: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -356,7 +340,7 @@ const styles = StyleSheet.create({
   },
   waveRow: {
     position: 'absolute',
-    top: 204,
+    top: 222,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -365,13 +349,13 @@ const styles = StyleSheet.create({
   waveBar: {
     width: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(255,213,46,0.85)',
+    backgroundColor: 'rgba(255,213,46,0.7)',
   },
   reelCaption: {
     borderRadius: 9,
     paddingHorizontal: 10,
     paddingVertical: 5,
-    maxWidth: 180,
+    maxWidth: 200,
   },
   reelCaptionText: {
     fontSize: 15,
@@ -380,22 +364,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 6,
     textShadowOffset: { width: 0, height: 1 },
   },
-  floatChip: {
-    position: 'absolute',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    height: 34,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  floatChipTop: { top: '20%', left: 24, transform: [{ rotate: '-4deg' }] },
-  floatChipBottom: { bottom: '20%', right: 20, transform: [{ rotate: '4deg' }] },
-  floatChipText: { color: '#FFFFFF', fontSize: 12, fontFamily: fonts.medium },
-  dotLive: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
   demoLink: {
     alignSelf: 'center',
     marginTop: 14,
