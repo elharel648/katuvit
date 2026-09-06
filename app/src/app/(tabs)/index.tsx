@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import {
@@ -51,6 +52,15 @@ export default function HomeScreen() {
   const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
   const session = getSession();
+
+  const showcasePlayer = useVideoPlayer(
+    require('@/assets/demo/showcase_small.mp4'),
+    (p) => {
+      p.loop = true;
+      p.muted = true;
+      p.play();
+    },
+  );
 
   useEffect(() => {
     const t = setInterval(
@@ -134,41 +144,17 @@ export default function HomeScreen() {
 
             {/* front reel card */}
             <View style={styles.reelCard}>
+              {/* live showcase video — the product on a real clip */}
+              <VideoView
+                player={showcasePlayer}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                nativeControls={false}
+              />
               <LinearGradient
-                colors={['#2A2350', '#3A2A4E', '#1A1830']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                colors={['transparent', 'rgba(10,10,18,0.15)', 'rgba(10,10,18,0.85)']}
                 style={StyleSheet.absoluteFill}
               />
-              {/* abstract creator avatar */}
-              <View style={styles.avatarGlow}>
-                <LinearGradient
-                  colors={['#FFD52E', '#FF9E2E']}
-                  style={styles.avatarInner}
-                >
-                  <SymbolView name="person.fill" size={30} tintColor="#1A1830" />
-                </LinearGradient>
-              </View>
-
-              {/* audio waveform — the core: voice becomes captions */}
-              <View style={styles.waveRow}>
-                {WAVE_BARS.map((h, i) => (
-                  <Animated.View
-                    key={i}
-                    style={[
-                      styles.waveBar,
-                      { height: h },
-                      {
-                        animationName: wavePulse,
-                        animationDuration: '900ms',
-                        animationDelay: `${i * 70}ms`,
-                        animationIterationCount: 'infinite',
-                        animationTimingFunction: 'ease-in-out',
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
 
               {/* the live caption, karaoke word-by-word */}
               <View
@@ -336,7 +322,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingBottom: 26,
+    paddingBottom: 40,
     transform: [{ rotate: '3deg' }],
     shadowColor: '#000',
     shadowOpacity: 0.5,
@@ -397,7 +383,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
   },
   floatChipTop: { top: '20%', left: 24, transform: [{ rotate: '-4deg' }] },
-  floatChipBottom: { bottom: '20%', right: 20, transform: [{ rotate: '4deg' }] },
+  floatChipBottom: { bottom: '24%', right: 34, transform: [{ rotate: '4deg' }] },
   floatChipText: { color: '#FFFFFF', fontSize: 12, fontFamily: fonts.medium },
   dotLive: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
   demoLink: {
