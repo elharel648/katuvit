@@ -225,6 +225,7 @@ export default function HomeScreen() {
                       style={[
                         styles.lookText,
                         { color: t.textColor, textShadowColor: t.backgroundColor ? 'transparent' : t.outlineColor },
+                        t.mode === 'boxword' && { backgroundColor: '#000000', borderRadius: 3, paddingHorizontal: 3 },
                       ]}
                     >
                       שלום

@@ -432,13 +432,15 @@ export default function EditorScreen() {
                           captionSize === 'large' && { fontSize: 30, lineHeight: 36 },
                           activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
                           !w.active && activeLine.words[i]?.em && { color: accent },
-                          w.active && activeTemplate.mode !== 'boxword' && { color: accent },
-                          w.active && activeTemplate.mode === 'boxword' && {
-                            color: '#000000',
-                            backgroundColor: accent,
-                            borderRadius: 6,
+                          activeTemplate.mode === 'boxword' && {
+                            backgroundColor: '#000000',
+                            borderRadius: 4,
                             paddingHorizontal: 6,
+                            paddingVertical: 2,
+                            textShadowColor: 'transparent',
                           },
+                          w.active && activeTemplate.mode !== 'boxword' && { color: accent },
+                          w.active && activeTemplate.mode === 'boxword' && { color: '#000000', backgroundColor: accent },
                           w.active && {
                             transform: [{ scale: style.animation === 'pop' ? 1.12 : activeTemplate.activeScale }],
                           },
@@ -635,7 +637,7 @@ export default function EditorScreen() {
                   )}
                   <View style={styles.styleCardCaption}>
                     <View style={[s.chip, styles.styleCardChip, styles.styleCardWords]}>
-                      <Text style={[styles.styleCardText, s.text]}>שלום</Text>
+                      <Text style={[styles.styleCardText, s.text, t.mode === 'boxword' && { backgroundColor: '#000000', borderRadius: 3, paddingHorizontal: 3 }]}>שלום</Text>
                       <Text
                         style={[
                           styles.styleCardText,
