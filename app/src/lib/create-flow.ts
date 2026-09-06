@@ -7,26 +7,32 @@ import { Alert } from 'react-native';
 import { uploadAndTranscribe } from './api';
 import { startSession } from './session';
 
-type Phase = 'idle' | 'uploading';
+export type CreatePhase = 'idle' | 'uploading' | 'transcribing';
+
+export interface CreateState {
+  phase: CreatePhase;
+  /** 0..1 upload progress (only meaningful while uploading) */
+  progress: number;
+}
 
 /** server enforces the same cap; keep in sync with MAX_DURATION_S */
 const MAX_SECONDS = 180;
 
-let phase: Phase = 'idle';
+let state: CreateState = { phase: 'idle', progress: 0 };
 const listeners = new Set<() => void>();
 
-function setPhase(p: Phase) {
-  phase = p;
+function setState(patch: Partial<CreateState>) {
+  state = { ...state, ...patch };
   listeners.forEach((fn) => fn());
 }
 
-/** the one create flow: pick → upload+transcribe → editor. usable from anywhere. */
+/** the one create flow: pick → upload (with progress) → transcribe → editor. usable from anywhere. */
 export async function startCreateFlow() {
-  if (phase === 'uploading') return;
+  if (state.phase !== 'idle') return;
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['videos'],
-    videoMaxDuration: 180,
+    videoMaxDuration: MAX_SECONDS,
   });
   if (picked.canceled || !picked.assets[0]) return;
   const asset = picked.assets[0];
@@ -42,15 +48,17 @@ export async function startCreateFlow() {
 
   // the picker hands us a copy in the app cache; make sure it is really readable
   const info = await LegacyFS.getInfoAsync(asset.uri).catch(() => null);
-  console.log('[create] picked', asset.uri, info);
   if (!info?.exists || !('size' in info) || !info.size) {
     Alert.alert('לא הצלחנו לקרוא את הסרטון', 'נסו לבחור אותו שוב מהגלריה');
     return;
   }
 
-  setPhase('uploading');
+  setState({ phase: 'uploading', progress: 0 });
   try {
-    const result = await uploadAndTranscribe(asset.uri);
+    const result = await uploadAndTranscribe(asset.uri, {
+      onProgress: (p) => setState({ progress: p }),
+      onUploaded: () => setState({ phase: 'transcribing', progress: 1 }),
+    });
     startSession({
       videoUri: asset.uri,
       segments: result.segments,
@@ -61,16 +69,20 @@ export async function startCreateFlow() {
     if (router.canDismiss()) router.dismissAll();
     router.push('/editor');
   } catch (e) {
-    Alert.alert('משהו השתבש', e instanceof Error ? e.message : 'נסו שוב');
+    // an instant server rejection lands while the picker sheet is still animating
+    // away, and iOS silently drops alerts presented during a modal dismissal
+    const message = e instanceof Error ? e.message : 'נסו שוב';
+    setTimeout(() => Alert.alert('משהו השתבש', message), 600);
   } finally {
-    setPhase('idle');
+    setState({ phase: 'idle', progress: 0 });
   }
 }
 
-export function useCreatePhase(): Phase {
-  const [value, setValue] = useState(phase);
+/** react hook: live create-flow state (phase + upload progress) */
+export function useCreatePhase(): CreateState {
+  const [value, setValue] = useState(state);
   useEffect(() => {
-    const fn = () => setValue(phase);
+    const fn = () => setValue(state);
     listeners.add(fn);
     return () => {
       listeners.delete(fn);

@@ -54,7 +54,7 @@ export default function HomeScreen() {
   const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
   const session = getSession();
-  const phase = useCreatePhase();
+  const create = useCreatePhase();
 
   useEffect(() => {
     const t = setInterval(
@@ -88,10 +88,22 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {phase === 'uploading' && (
+      {create.phase !== 'idle' && (
         <View style={styles.statusPill} accessibilityLiveRegion="polite">
-          <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={styles.statusText}>מעלים ומתמללים… בדרך כלל חצי דקה</Text>
+          {create.phase === 'uploading' ? (
+            <>
+              <Text style={styles.statusPct}>{Math.round(create.progress * 100)}%</Text>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${Math.round(create.progress * 100)}%` }]} />
+              </View>
+              <Text style={styles.statusText}>מעלים את הסרטון</Text>
+            </>
+          ) : (
+            <>
+              <ActivityIndicator size="small" color={colors.accent} />
+              <Text style={styles.statusText}>מתמללים… בדרך כלל חצי דקה</Text>
+            </>
+          )}
         </View>
       )}
 
@@ -254,6 +266,16 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   statusText: { color: colors.textDim, fontSize: 13, fontFamily: fonts.medium },
+  statusPct: { color: colors.accent, fontSize: 13, fontFamily: fonts.bold, minWidth: 38, textAlign: 'left' },
+  progressTrack: {
+    width: 110,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+    flexDirection: 'row-reverse',
+  },
+  progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.accent },
   hero: {
     flex: 1,
     backgroundColor: colors.surface,

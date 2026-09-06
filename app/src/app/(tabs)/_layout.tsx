@@ -22,7 +22,7 @@ const glow = {
 
 function CustomTabBar({ state, navigation }: any) {
   const insets = useSafeAreaInsets();
-  const phase = useCreatePhase();
+  const { phase, progress } = useCreatePhase();
 
   const sideTabs = [
     { name: 'index', label: 'בית', icon: 'house.fill' },
@@ -65,7 +65,7 @@ function CustomTabBar({ state, navigation }: any) {
           accessibilityRole="button"
           accessibilityLabel="סרטון חדש"
           style={styles.createHit}
-          disabled={phase === 'uploading'}
+          disabled={phase !== 'idle'}
         >
           <Animated.View
             style={[
@@ -80,6 +80,8 @@ function CustomTabBar({ state, navigation }: any) {
           />
           <View style={styles.createButton}>
             {phase === 'uploading' ? (
+              <Text style={styles.createPct}>{Math.round(progress * 100)}%</Text>
+            ) : phase === 'transcribing' ? (
               <ActivityIndicator color={colors.onAccent} />
             ) : (
               <SymbolView name="plus" size={30} tintColor={colors.onAccent} />
@@ -208,6 +210,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     opacity: 0.5,
   },
+  createPct: { color: colors.onAccent, fontSize: 15, fontFamily: fonts.bold },
   createButton: {
     width: 66,
     height: 66,

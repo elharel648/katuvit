@@ -21,6 +21,14 @@ function messageFor(body: string | undefined, status: number): string {
     const parsed = JSON.parse(body ?? '');
     if (parsed?.error && ERROR_HE[parsed.error]) return ERROR_HE[parsed.error];
   } catch {}
+  // non-JSON bodies come from the cloud provider itself, not from our code
+  if (/workspace .* disabled/i.test(body ?? '')) {
+    return 'השרת מושבת כרגע אצל ספק הענן. נסו שוב מאוחר יותר';
+  }
+  if (status === 404) return 'השרת לא זמין כרגע. נסו שוב בעוד כמה דקות';
+  if (status === 502 || status === 503 || status === 504) {
+    return 'השרת עמוס או מתעורר. נסו שוב בעוד דקה';
+  }
   return `השרת החזיר שגיאה (${status})`;
 }
 
@@ -50,20 +58,45 @@ export interface TranscribeResult {
   media_id: string;
 }
 
+export interface UploadCallbacks {
+  /** 0..1 as bytes leave the device */
+  onProgress?: (fraction: number) => void;
+  /** the whole file is on the server; transcription (no progress info) starts now */
+  onUploaded?: () => void;
+}
+
 /**
  * Upload a local video/audio file and get the transcript back.
- * Uses uploadAsync: streams from disk (no 50MB in JS memory), multipart.
+ * Streams from disk (no 50MB in JS memory), multipart, with byte-level progress.
  */
 export async function uploadAndTranscribe(
   fileUri: string,
+  callbacks: UploadCallbacks = {},
 ): Promise<TranscribeResult> {
   await ensureCacheDir();
-  const res = await LegacyFS.uploadAsync(TRANSCRIBE_UPLOAD_URL, fileUri, {
-    httpMethod: 'POST',
-    uploadType: LegacyFS.FileSystemUploadType.MULTIPART,
-    fieldName: 'file',
-    parameters: { api_key: KATUVIT_API_KEY },
-  });
+  let announcedUploaded = false;
+  const task = LegacyFS.createUploadTask(
+    TRANSCRIBE_UPLOAD_URL,
+    fileUri,
+    {
+      httpMethod: 'POST',
+      uploadType: LegacyFS.FileSystemUploadType.MULTIPART,
+      fieldName: 'file',
+      parameters: { api_key: KATUVIT_API_KEY },
+    },
+    ({ totalBytesSent, totalBytesExpectedToSend }) => {
+      if (!totalBytesExpectedToSend) return;
+      const fraction = Math.min(1, totalBytesSent / totalBytesExpectedToSend);
+      callbacks.onProgress?.(fraction);
+      if (fraction >= 1 && !announcedUploaded) {
+        announcedUploaded = true;
+        callbacks.onUploaded?.();
+      }
+    },
+  );
+  const res = await task.uploadAsync();
+  if (!res) throw new Error('ההעלאה בוטלה');
+  if (!announcedUploaded) callbacks.onUploaded?.();
   if (res.status !== 200) throw new Error(messageFor(res.body, res.status));
   const data = JSON.parse(res.body);
   if (!data.segments) throw new Error(data.error ?? 'תשובה לא צפויה מהשרת');
