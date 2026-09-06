@@ -3,7 +3,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
-import * as MediaLibrary from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import * as Sharing from 'expo-sharing';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Image } from 'expo-image';
@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -256,7 +257,7 @@ export default function EditorScreen() {
       // video is ready locally — success now; saving to Photos is a follow-up action
       setExportedUri(uri);
       setExportPhase('done');
-      saveToPhotos(uri); // fire-and-forget; never blocks the success screen
+      saveToPhotos(uri, true); // quiet first attempt; the sheet offers a loud retry
     } catch (e) {
       setExportPhase('idle');
       Alert.alert('הייצוא נכשל', e instanceof Error ? e.message : 'נסו שוב');
@@ -264,14 +265,34 @@ export default function EditorScreen() {
   };
 
   const [savedToPhotos, setSavedToPhotos] = useState(false);
-  const saveToPhotos = async (uri: string) => {
+  /**
+   * Save the export to Photos. `silent` is the automatic attempt right after export;
+   * the button in the success sheet calls it loudly so a refused permission is explained.
+   */
+  const saveToPhotos = async (uri: string, silent = false) => {
     try {
-      const perm = await MediaLibrary.requestPermissionsAsync();
-      if (!perm.granted) return;
+      // add-only access is all we need; iOS shows the smaller "Add Photos Only" prompt
+      const perm = await MediaLibrary.requestPermissionsAsync(true);
+      if (!perm.granted) {
+        if (!silent) {
+          Alert.alert(
+            'אין הרשאה לגלריה',
+            'כדי לשמור סרטונים, אפשרו לאפליקציה להוסיף תמונות בהגדרות.',
+            [
+              { text: 'ביטול', style: 'cancel' },
+              { text: 'פתיחת הגדרות', onPress: () => Linking.openSettings() },
+            ],
+          );
+        }
+        return;
+      }
       await MediaLibrary.saveToLibraryAsync(uri);
       setSavedToPhotos(true);
-    } catch {
-      // simulator / permission quirks — user can still share from the success sheet
+    } catch (e) {
+      console.log('[photos] save failed', e);
+      if (!silent) {
+        Alert.alert('השמירה לגלריה נכשלה', e instanceof Error ? e.message : 'נסו שוב, או שתפו את הסרטון');
+      }
     }
   };
 
