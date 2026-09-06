@@ -1,3 +1,4 @@
+import * as LegacyFS from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
@@ -36,6 +37,14 @@ export async function startCreateFlow() {
       'הסרטון ארוך מדי',
       `בגרסה הזו אפשר עד ${MAX_SECONDS / 60} דקות. חתכו אותו באפליקציית התמונות ונסו שוב.`,
     );
+    return;
+  }
+
+  // the picker hands us a copy in the app cache; make sure it is really readable
+  const info = await LegacyFS.getInfoAsync(asset.uri).catch(() => null);
+  console.log('[create] picked', asset.uri, info);
+  if (!info?.exists || !('size' in info) || !info.size) {
+    Alert.alert('לא הצלחנו לקרוא את הסרטון', 'נסו לבחור אותו שוב מהגלריה');
     return;
   }
 

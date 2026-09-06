@@ -117,10 +117,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 
 def check_key(provided, expected) -> bool:
+    """Constant-time key check. Accepts str or bytes; tolerates surrounding whitespace."""
     import hmac
+    if isinstance(provided, bytes):
+        provided = provided.decode("utf-8", "ignore")
     if not isinstance(provided, str) or not expected:
         return False
-    return hmac.compare_digest(provided.encode(), expected.encode())
+    return hmac.compare_digest(provided.strip().encode(), str(expected).strip().encode())
+
+
+async def form_key(form):
+    """api_key from a multipart form; some clients send text parts as file parts."""
+    v = form.get("api_key")
+    if v is not None and not isinstance(v, (str, bytes)) and hasattr(v, "read"):
+        v = await v.read()
+    return v
 
 
 # ---- image -------------------------------------------------------------------
@@ -197,7 +208,16 @@ class Transcriber:
         import os, subprocess, tempfile, uuid
 
         form = await request.form()
-        if not check_key(form.get("api_key"), os.environ.get("KATUVIT_API_KEY")):
+        provided = await form_key(form)
+        if not check_key(provided, os.environ.get("KATUVIT_API_KEY")):
+            # diagnostic only: type + length, never the value
+            print(
+                "upload auth failed:",
+                f"type={type(provided).__name__}",
+                f"fields={list(form.keys())}",
+                f"content-type={request.headers.get('content-type')!r}",
+                f"content-length={request.headers.get('content-length')!r}",
+            )
             return _json({"error": "unauthorized"}, 401)
 
         upload_file = form.get("file")

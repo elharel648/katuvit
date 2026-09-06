@@ -26,6 +26,24 @@ function messageFor(body: string | undefined, status: number): string {
 
 const BURN_TIMEOUT_MS = 270_000; // server gives up at 240s; Modal at 300s
 
+/**
+ * The legacy uploader stages its multipart body in the app cache directory and
+ * the new File API writes exports there. If that directory is missing (Expo Go
+ * scopes it per project) the upload silently goes out with an EMPTY body — the
+ * same symptom a full disk produces (seen 2026-09-06: Content-Length: 0).
+ */
+export async function ensureCacheDir(): Promise<void> {
+  const dir = LegacyFS.cacheDirectory;
+  if (!dir) return;
+  try {
+    const info = await LegacyFS.getInfoAsync(dir);
+    console.log('[fs] cacheDirectory', dir, 'exists:', info.exists);
+    if (!info.exists) await LegacyFS.makeDirectoryAsync(dir, { intermediates: true });
+  } catch (e) {
+    console.log('[fs] ensureCacheDir failed', e);
+  }
+}
+
 export interface TranscribeResult {
   segments: TranscriptSegment[];
   duration: number;
@@ -39,6 +57,7 @@ export interface TranscribeResult {
 export async function uploadAndTranscribe(
   fileUri: string,
 ): Promise<TranscribeResult> {
+  await ensureCacheDir();
   const res = await LegacyFS.uploadAsync(TRANSCRIBE_UPLOAD_URL, fileUri, {
     httpMethod: 'POST',
     uploadType: LegacyFS.FileSystemUploadType.MULTIPART,
@@ -65,6 +84,7 @@ export interface BurnParams {
  * two-step download path. Returns the local file uri.
  */
 export async function burnAndDownload(params: BurnParams): Promise<string> {
+  await ensureCacheDir();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), BURN_TIMEOUT_MS);
   let res: Response;
