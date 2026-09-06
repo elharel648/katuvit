@@ -27,10 +27,10 @@ import { colors, fonts, radius, spacing } from '@/lib/theme';
 
 /** the product demos itself: one specimen line, cycling through real styles */
 const SPECIMEN_LINES = [
-  'כל מילה שאתם אומרים, כבר על המסך',
-  'מדברים חופשי, הכתוביות מדביקות',
-  'העלו סרטון, את השאר תשאירו לנו',
-  'מילה במילה, בלי לגעת במקלדת',
+  'אם אתם קוראים את זה, זה עבד',
+  'רגע, אני אגיד את זה שוב בשביל הכתוביות',
+  'כן, זה בעברית. לא, לא הקלדתי כלום',
+  'טוב, בלי הקדמות. הנה מה שקרה',
 ];
 
 /** karaoke: each word pops in sequence, like live captions */
