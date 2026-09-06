@@ -23,16 +23,59 @@ MEDIA_ID_RE = re.compile(r"^[0-9a-f]{32}\Z")  # \Z: "$" would accept a trailing 
 # ASS colours are &HAABBGGRR. Brand yellow #FFD52E -> BB=2E GG=D5 RR=FF.
 WHITE, BLACK, YELLOW = "&H00FFFFFF", "&H00000000", "&H002ED5FF"
 
-# mode: "highlight" = whole line visible, the spoken word lights up
+# mode: "highlight" = whole line visible, the spoken word lights up (colour = accent)
+#       "boxword"   = whole line visible, the spoken word sits in an accent box with black text
+#       "fill"      = true karaoke: colour sweeps through each word as it is sung
+#       "neon"      = glowing outline in the accent colour, spoken word brightens
 #       "reveal"    = words appear one by one as they are spoken
 #       "static"    = plain line captions
+# border: 1 = outline+shadow, 3 = box per word (used with transparent box for boxword), 4 = one box per line
 TEMPLATES = {
-    "bold":    {"mode": "highlight", "box": True,  "outline": 9, "shadow": 0, "active": YELLOW, "scale": 100},  # outline = box padding
-    "reveal":  {"mode": "reveal",    "box": False, "outline": 5, "shadow": 2, "active": WHITE,  "scale": 100},
-    "clean":   {"mode": "highlight", "box": False, "outline": 5, "shadow": 2, "active": YELLOW, "scale": 108},
-    "classic": {"mode": "static",    "box": False, "outline": 5, "shadow": 2, "active": WHITE,  "scale": 100},
+    "bold":    {"mode": "highlight", "border": 4, "outline": 9, "shadow": 0, "text": WHITE, "scale": 100},
+    "boxword": {"mode": "boxword",   "border": 3, "outline": 12, "shadow": 0, "text": WHITE, "scale": 100},
+    "fill":    {"mode": "fill",      "border": 1, "outline": 5, "shadow": 2, "text": WHITE, "scale": 100},
+    "neon":    {"mode": "neon",      "border": 1, "outline": 4, "shadow": 0, "text": WHITE, "scale": 104},
+    "reveal":  {"mode": "reveal",    "border": 1, "outline": 5, "shadow": 2, "text": WHITE, "scale": 100},
+    "clean":   {"mode": "highlight", "border": 1, "outline": 5, "shadow": 2, "text": WHITE, "scale": 108},
+    "frame":   {"mode": "highlight", "border": 4, "outline": 10, "shadow": 0, "text": "&H00111111", "scale": 100, "box_colour": "&H10FFFFFF"},
+    "classic": {"mode": "static",    "border": 1, "outline": 5, "shadow": 2, "text": WHITE, "scale": 100},
 }
 DEFAULT_TEMPLATE = "bold"
+
+# accent colours the spoken word can take (ASS &HAABBGGRR)
+ACCENTS = {
+    "yellow": "&H002ED5FF",   # #FFD52E brand
+    "green":  "&H0060F04A",   # #4AF060
+    "pink":   "&H00A34FFF",   # #FF4FA3
+    "cyan":   "&H00FFD84A",   # #4AD8FF
+    "orange": "&H002E8AFF",   # #FF8A2E
+    "white":  WHITE,
+}
+DEFAULT_ACCENT = "yellow"
+
+# fontconfig family names baked into the worker image (all OFL)
+FONTS = {"rubik": "Rubik", "heebo": "Heebo", "secular": "Secular One", "noto": "Noto Sans Hebrew"}
+DEFAULT_FONT = "rubik"
+
+# alignment (numpad) + vertical margin on the 1080x1920 canvas
+POSITIONS = {"bottom": (2, 480), "center": (5, 0), "top": (8, 320)}
+DEFAULT_POSITION = "bottom"
+
+# what the spoken word does when it becomes active
+ANIMATIONS = {"none", "pop"}
+DEFAULT_ANIMATION = "none"
+
+
+def style_options(body: dict) -> dict:
+    """Whitelisted style choices from the client; anything unknown falls back to defaults."""
+    body = body or {}
+    return {
+        "template": body.get("template") if body.get("template") in TEMPLATES else DEFAULT_TEMPLATE,
+        "accent": body.get("accent") if body.get("accent") in ACCENTS else DEFAULT_ACCENT,
+        "font": body.get("font") if body.get("font") in FONTS else DEFAULT_FONT,
+        "position": body.get("position") if body.get("position") in POSITIONS else DEFAULT_POSITION,
+        "animation": body.get("animation") if body.get("animation") in ANIMATIONS else DEFAULT_ANIMATION,
+    }
 MAX_WORDS_PER_LINE = 24
 
 # ---- plans & quotas (the real protection against runaway cost) ----------------
@@ -127,18 +170,40 @@ def normalize_lines(raw) -> list:
     return out
 
 
-def _events_for_line(line: dict, tpl: dict) -> list:
+def _active_tags(tpl: dict, accent: str, animation: str) -> str:
+    """Override block that marks the word being spoken, per look."""
+    mode = tpl["mode"]
+    if mode == "boxword":
+        tags = "\\3c" + accent + "&\\1c&H00000000&"        # accent box (outline colour with BorderStyle 3), black text
+    elif mode == "neon":
+        tags = "\\1c&H00FFFFFF&\\bord7\\blur6"           # brighter core, wider glow
+    else:
+        tags = "\\c" + accent + "&"
+    if tpl["scale"] != 100:
+        tags += f"\\fscx{tpl['scale']}\\fscy{tpl['scale']}"
+    if animation == "pop":
+        # quick scale bounce as the word lights up
+        tags += "\\fscx100\\fscy100\\t(0,110,\\fscx114\\fscy114)\\t(110,260,\\fscx100\\fscy100)"
+    return "{" + tags + "}"
+
+
+def _events_for_line(line: dict, tpl: dict, accent: str = ACCENTS[DEFAULT_ACCENT], animation: str = DEFAULT_ANIMATION) -> list:
     """(start, end, text-with-overrides) events for one caption line."""
     words = line["words"]
     if tpl["mode"] == "static" or len(words) <= 1:
         return [(line["start"], line["end"], line["text"])]
 
-    active_open = "{\\c" + tpl["active"] + "&"
-    if tpl["scale"] != 100:
-        active_open += f"\\fscx{tpl['scale']}\\fscy{tpl['scale']}"
-    active_open += "}"
-    reset = "{\\r}"
+    if tpl["mode"] == "fill":
+        # one event per line; \kf sweeps the fill colour through each word for its duration (centiseconds)
+        parts = []
+        for i, w in enumerate(words):
+            nxt = words[i + 1]["s"] if i + 1 < len(words) else line["end"]
+            dur = max(1, int(round((nxt - max(w["s"], line["start"])) * 100)))
+            parts.append(f"{{\\kf{dur}}}{w['w']}")
+        return [(line["start"], line["end"], " ".join(parts))]
 
+    active_open = _active_tags(tpl, accent, animation)
+    reset = "{\\r}"
     events = []
     for i, w in enumerate(words):
         seg_start = max(line["start"], w["s"]) if i else line["start"]
@@ -147,7 +212,7 @@ def _events_for_line(line: dict, tpl: dict) -> list:
             continue
         if tpl["mode"] == "reveal":
             text = " ".join(x["w"] for x in words[: i + 1])
-        else:  # highlight
+        else:
             text = " ".join(
                 (active_open + x["w"] + reset) if j == i else x["w"]
                 for j, x in enumerate(words)
@@ -156,10 +221,34 @@ def _events_for_line(line: dict, tpl: dict) -> list:
     return events
 
 
-def build_ass(lines: list, template: str, font_size: int = 108, watermark: bool = False) -> str:
+def build_ass(
+    lines: list,
+    template: str,
+    font_size: int = 108,
+    watermark: bool = False,
+    accent: str = DEFAULT_ACCENT,
+    font: str = DEFAULT_FONT,
+    position: str = DEFAULT_POSITION,
+    animation: str = DEFAULT_ANIMATION,
+) -> str:
     tpl = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
-    border_style = 4 if tpl["box"] else 1
-    back = "&H9A000000" if tpl["box"] else "&H80000000"
+    accent_c = ACCENTS.get(accent, ACCENTS[DEFAULT_ACCENT])
+    font_name = FONTS.get(font, FONTS[DEFAULT_FONT])
+    align, margin_v = POSITIONS.get(position, POSITIONS[DEFAULT_POSITION])
+    border_style = tpl["border"]
+    mode = tpl["mode"]
+    # colours per look: primary/secondary drive \kf fills; outline colour is the box for BorderStyle 3
+    primary, secondary = tpl["text"], tpl["text"]
+    outline_c = BLACK
+    back = "&H9A000000" if border_style == 4 else "&H80000000"
+    if mode == "fill":
+        primary, secondary = accent_c, tpl["text"]          # sweeps from text colour to accent
+    if mode == "boxword":
+        outline_c = "&HFF000000"                            # transparent boxes until a word is active
+    if mode == "neon":
+        outline_c = accent_c
+    if tpl.get("box_colour"):
+        back = tpl["box_colour"]
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -168,7 +257,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,Noto Sans Hebrew,{font_size},{WHITE},{WHITE},{BLACK},{back},-1,0,0,0,100,100,0,0,{border_style},{tpl['outline']},{tpl['shadow']},2,70,70,480,177
+Style: Cap,{font_name},{font_size},{primary},{secondary},{outline_c},{back},-1,0,0,0,100,100,0,0,{border_style},{tpl['outline']},{tpl['shadow']},{align},70,70,{margin_v},177
 Style: Mark,Noto Sans Hebrew,42,&H60FFFFFF,&H60FFFFFF,&H60000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,9,0,44,120,177
 
 [Events]
@@ -178,9 +267,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     if watermark:
         # free tier: small translucent brand mark, top-right, for the whole video
         events.append(f"Dialogue: 1,0:00:00.00,9:59:59.00,Mark,,0,0,0,,{WATERMARK_TEXT}\n")
+    glow = "{\\blur4}" if mode == "neon" else ""
     for line in lines:
-        for start, end, text in _events_for_line(line, tpl):
-            events.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Cap,,0,0,0,,{text}\n")
+        for start, end, text in _events_for_line(line, tpl, accent_c, animation):
+            events.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Cap,,0,0,0,,{glow}{text}\n")
     return header + "".join(events)
 
 

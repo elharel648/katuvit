@@ -28,7 +28,6 @@ from google.auth.transport import requests as google_requests
 from google.cloud import storage
 
 from captions import (
-    DEFAULT_TEMPLATE,
     FFMPEG_TIMEOUT_S,
     MAX_DURATION_S,
     MAX_UPLOAD_BYTES,
@@ -44,6 +43,7 @@ from captions import (
     normalize_lines,
     probe_video,
     quota_decision,
+    style_options,
     video_filter,
 )
 
@@ -348,7 +348,7 @@ def burn(body: dict = Body(...), authorization: str | None = Header(default=None
         return _err("bad_lines", 400)
     if not lines:
         return _err("no_lines", 400)
-    template = body.get("template") if body.get("template") in TEMPLATES else DEFAULT_TEMPLATE
+    style = style_options(body)
     font_size = clamp_font(body.get("font_size"))
     width = 720 if body.get("quality") == "720p" else 1080
 
@@ -363,7 +363,10 @@ def burn(body: dict = Body(...), authorization: str | None = Header(default=None
         hdr = probe_video(src)["hdr"]
         ass_path = os.path.join(td, "captions.ass")
         with open(ass_path, "w", encoding="utf-8") as f:
-            f.write(build_ass(lines, template, font_size, watermark=watermark))
+            f.write(build_ass(
+                lines, style["template"], font_size, watermark=watermark,
+                accent=style["accent"], font=style["font"], position=style["position"], animation=style["animation"],
+            ))
         out = os.path.join(td, "out.mp4")
         try:
             subprocess.run(

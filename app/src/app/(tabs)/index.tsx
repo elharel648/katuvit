@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { startCreateFlow, useCreatePhase } from '@/lib/create-flow';
 import { quotaLabel, useEntitlements } from '@/lib/entitlements';
 import { updateSettings, useSettings } from '@/lib/settings';
+import { accentHex } from '@/lib/templates';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
@@ -200,17 +201,18 @@ export default function HomeScreen() {
           </View>
 
           {/* the look the next video starts with */}
-          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>הלוק שלך</Text>
+          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>סגנון הכתוביות</Text>
           <View style={styles.looksRow}>
             {TEMPLATES.map((t) => {
-              const active = t.id === settings.defaultTemplate;
+              const active = t.id === settings.defaultStyle.template;
+              const accent = accentHex(settings.defaultStyle.accent);
               return (
                 <Pressable
                   key={t.id}
                   style={[styles.lookTile, active && styles.lookTileActive]}
-                  onPress={() => updateSettings({ defaultTemplate: t.id })}
+                  onPress={() => updateSettings({ defaultStyle: { ...settings.defaultStyle, template: t.id } })}
                   accessibilityRole="button"
-                  accessibilityLabel={`לוק ${t.name}`}
+                  accessibilityLabel={`סגנון ${t.name}`}
                   accessibilityState={{ selected: active }}
                 >
                   <View
@@ -231,7 +233,8 @@ export default function HomeScreen() {
                       style={[
                         styles.lookText,
                         { color: t.textColor, textShadowColor: t.backgroundColor ? 'transparent' : t.outlineColor },
-                        t.mode === 'highlight' && { color: t.activeColor },
+                        (t.mode === 'highlight' || t.mode === 'fill' || t.mode === 'neon') && { color: accent },
+                        t.mode === 'boxword' && { color: '#000000', backgroundColor: accent, borderRadius: 3, paddingHorizontal: 3 },
                         t.mode === 'reveal' && { opacity: 0.35 },
                       ]}
                     >

@@ -1,17 +1,20 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 
+import { DEFAULT_STYLE } from './templates';
+import type { StyleChoice } from './types';
+
 export type ExportQuality = '1080p' | '720p';
 export type CaptionSize = 'small' | 'medium' | 'large';
 
 export interface AppSettings {
   exportQuality: ExportQuality;
   captionSize: CaptionSize;
-  /** template id the editor starts with */
-  defaultTemplate: string;
+  /** style the editor starts with */
+  defaultStyle: StyleChoice;
 }
 
-const DEFAULTS: AppSettings = { exportQuality: '1080p', captionSize: 'medium', defaultTemplate: 'bold' };
+const DEFAULTS: AppSettings = { exportQuality: '1080p', captionSize: 'medium', defaultStyle: DEFAULT_STYLE };
 const KEY = 'katuvit.settings.v1';
 
 let cached: AppSettings = { ...DEFAULTS };
@@ -20,7 +23,10 @@ const listeners = new Set<() => void>();
 export async function loadSettings(): Promise<AppSettings> {
   try {
     const raw = await AsyncStorage.getItem(KEY);
-    if (raw) cached = { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      cached = { ...DEFAULTS, ...parsed, defaultStyle: { ...DEFAULT_STYLE, ...(parsed.defaultStyle ?? {}) } };
+    }
   } catch {}
   return cached;
 }

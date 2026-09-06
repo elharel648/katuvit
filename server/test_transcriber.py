@@ -23,6 +23,8 @@ from captions import (  # noqa: E402
     clean_caption_text,
     even_words,
     consume,
+    ACCENTS,
+    style_options,
     quota_decision,
     FREE_LIFETIME_VIDEOS,
     PRO_MONTHLY_VIDEOS,
@@ -155,7 +157,7 @@ def test_static_and_single_word_lines_are_one_event():
 def test_build_ass_structure():
     ass = build_ass(normalize_lines([LINE]), "bold", 90)
     assert "PlayResX: 1080" in ass and "PlayResY: 1920" in ass
-    assert "Style: Cap,Noto Sans Hebrew,90," in ass
+    assert "Style: Cap,Rubik,90," in ass                 # default font
     assert ",4,9,0,2,70,70,480,177" in ass            # box style (+padding), bottom-center, safe-zone margin
     assert ass.count("Dialogue:") == 3
     assert "Dialogue: 0,0:00:10.00,0:00:10.60,Cap,,0,0,0,,{\\c" + YELLOW + "&}טוב{\\r} חברים יש" in ass
@@ -208,6 +210,37 @@ def test_watermark_only_for_free_tier():
     assert "Style: Mark," in marked
     assert f"9:59:59.00,Mark,,0,0,0,,{WATERMARK_TEXT}" in marked
     assert marked.count("Dialogue:") == 4                                   # 3 karaoke events + 1 mark
+
+
+def test_style_options_whitelist():
+    assert style_options({}) == {"template": "bold", "accent": "yellow", "font": "rubik", "position": "bottom", "animation": "none"}
+    chosen = style_options({"template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"})
+    assert chosen == {"template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"}
+    junk = style_options({"template": "../x", "accent": "#fff", "font": "Comic Sans", "position": "left", "animation": "spin"})
+    assert junk == style_options({})
+
+
+def test_looks_render_their_signature_tags():
+    lines = normalize_lines([LINE])
+    # accent colour + font + position land in the style line
+    ass = build_ass(lines, "clean", 100, accent="green", font="secular", position="top")
+    assert "Style: Cap,Secular One,100," in ass and ",8,70,70,320,177" in ass
+    assert "{\\c" + ACCENTS["green"] + "&\\fscx108\\fscy108}חברים{\\r}" in ass
+    # boxword: transparent boxes (outline alpha FF) + accent box with black text on the active word
+    bw = build_ass(lines, "boxword", 100)
+    assert ",&HFF000000," in bw and "\\3c" + ACCENTS["yellow"] + "&\\1c&H00000000&}חברים" in bw
+    # fill: one event per line with \kf durations in centiseconds, primary = accent
+    fl = build_ass(lines, "fill", 100)
+    assert fl.count("Dialogue: 0,") == 1 and "{\\kf60}טוב {\\kf80}חברים {\\kf60}יש" in fl
+    assert "Style: Cap,Rubik,100," + ACCENTS["yellow"] + "," in fl
+    # neon: glow blur on every event, brighter core on the active word
+    ne = build_ass(lines, "neon", 100, accent="cyan")
+    assert ",,{\\blur4}" in ne and "\\bord7\\blur6" in ne and ACCENTS["cyan"] in ne
+    # pop animation adds a scale bounce transform
+    pop = build_ass(lines, "bold", 100, animation="pop")
+    assert "\\t(0,110,\\fscx114\\fscy114)" in pop
+    # center position ignores the vertical margin
+    assert ",5,70,70,0,177" in build_ass(lines, "bold", 100, position="center")
 
 
 def test_media_id_regex():

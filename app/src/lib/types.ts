@@ -25,18 +25,37 @@ export interface CaptionLine {
   edited: boolean;
 }
 
-/** highlight: whole line shown, spoken word lights up · reveal: words appear as spoken · static: plain */
-export type CaptionMode = 'highlight' | 'reveal' | 'static';
+/**
+ * highlight: whole line shown, spoken word takes the accent colour
+ * boxword:   spoken word sits in an accent box with black text
+ * fill:      colour sweeps through each word as it is sung
+ * neon:      glowing accent outline, spoken word brightens
+ * reveal:    words appear as spoken · static: plain
+ */
+export type CaptionMode = 'highlight' | 'boxword' | 'fill' | 'neon' | 'reveal' | 'static';
+
+export type AccentId = 'yellow' | 'green' | 'pink' | 'cyan' | 'orange' | 'white';
+export type FontId = 'rubik' | 'heebo' | 'secular';
+export type PositionId = 'bottom' | 'center' | 'top';
+export type AnimationId = 'none' | 'pop';
+
+/** everything that shapes the burned captions besides the text itself */
+export interface StyleChoice {
+  template: string;
+  accent: AccentId;
+  font: FontId;
+  position: PositionId;
+  animation: AnimationId;
+}
 
 export interface CaptionTemplate {
   id: string;
   name: string;
   mode: CaptionMode;
   textColor: string;
-  /** colour of the word being spoken (highlight mode) */
-  activeColor: string;
-  /** highlight mode only: scale bump of the spoken word in the preview */
+  /** highlight/clean: scale bump of the spoken word in the preview */
   activeScale: number;
   outlineColor: string;
+  /** line box behind the whole caption (bold, frame) */
   backgroundColor: string | null;
 }

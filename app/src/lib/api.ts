@@ -3,7 +3,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 import { getIdToken } from './auth';
 import { KATUVIT_API_KEY, WORKER_BASE_URL } from './config';
 import { setEntitlements, type Entitlements } from './entitlements';
-import type { TranscriptSegment, Word } from './types';
+import type { StyleChoice, TranscriptSegment, Word } from './types';
 
 /**
  * Client for the Katuvit worker (Cloud Run, same Google project as Firebase).
@@ -174,7 +174,7 @@ export async function uploadAndTranscribe(
 
 export interface BurnParams {
   mediaId: string;
-  template: string;
+  style: StyleChoice;
   lines: { start: number; end: number; text: string; words: Word[] }[];
   quality: string;
   fontSize: number;
@@ -200,7 +200,11 @@ export async function burnAndDownload(
     '/burn',
     {
       media_id: params.mediaId,
-      template: params.template,
+      template: params.style.template,
+      accent: params.style.accent,
+      font: params.style.font,
+      position: params.style.position,
+      animation: params.style.animation,
       lines: params.lines,
       quality: params.quality,
       font_size: params.fontSize,

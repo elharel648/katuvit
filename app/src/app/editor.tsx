@@ -19,7 +19,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -29,9 +28,9 @@ import { burnAndDownload } from '@/lib/api';
 import { isRtlText, previewWords, retimeWords, splitIntoLines } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { CAPTION_SIZE_FONT, getSettings } from '@/lib/settings';
-import { TEMPLATES } from '@/lib/templates';
+import { ACCENTS, ANIMATIONS, FONTS, POSITIONS, TEMPLATES, accentHex, fontFamily } from '@/lib/templates';
 import { colors, fonts } from '@/lib/theme';
-import type { CaptionLine, CaptionTemplate, TranscriptSegment } from '@/lib/types';
+import type { CaptionLine, CaptionTemplate, StyleChoice, TranscriptSegment } from '@/lib/types';
 
 /** how the active caption is painted on the video, per template */
 function captionStyleFor(t: CaptionTemplate) {
@@ -62,9 +61,12 @@ export default function EditorScreen() {
   }, [session]);
 
   const [lines, setLines] = useState<CaptionLine[]>(initialLines);
-  const [templateId, setTemplateId] = useState(
-    () => TEMPLATES.find((t) => t.id === getSettings().defaultTemplate)?.id ?? TEMPLATES[0].id,
-  );
+  const [style, setStyle] = useState<StyleChoice>(() => getSettings().defaultStyle);
+  const templateId = style.template;
+  const setTemplateId = (id: string) => setStyle((s) => ({ ...s, template: id }));
+  const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion'>('look');
+  const accent = accentHex(style.accent);
+  const previewFont = fontFamily(style.font);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string>(initialLines[0]?.id);
   const [editingLine, setEditingLine] = useState<CaptionLine | null>(null);
@@ -81,9 +83,6 @@ export default function EditorScreen() {
   const didInitialScroll = useRef(false);
   const [draft, setDraft] = useState('');
 
-  const { width: windowW } = useWindowDimensions();
-  const styleCardW = Math.floor((windowW - 32 - 8 * (TEMPLATES.length - 1)) / TEMPLATES.length);
-  const styleCardH = Math.round(styleCardW * 1.32);
 
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
@@ -142,7 +141,7 @@ export default function EditorScreen() {
       const settings = getSettings();
       const uri = await burnAndDownload({
         mediaId: session.mediaId,
-        template: templateId,
+        style,
         lines: lines.map((l) => ({ start: l.start, end: l.end, text: l.text, words: l.words })),
         quality: settings.exportQuality,
         fontSize: CAPTION_SIZE_FONT[settings.captionSize],
@@ -256,11 +255,11 @@ export default function EditorScreen() {
           <View style={styles.roundButtonPlaceholder} />
         </View>
 
-        <View style={styles.flexSpacer} />
+        <View style={style.position === 'top' ? styles.flexSpacerSmall : styles.flexSpacer} />
 
         {/* the live caption — tap to edit */}
         <Pressable
-          style={styles.captionZone}
+          style={[styles.captionZone, style.position === 'center' && styles.captionZoneCenter]}
           onPress={() => activeLine && openEdit(activeLine)}
           accessibilityRole="button"
           accessibilityLabel="עריכת הכתובית"
@@ -279,9 +278,16 @@ export default function EditorScreen() {
                     style={[
                       styles.captionText,
                       capStyle.text,
+                      { fontFamily: previewFont },
+                      w.active && activeTemplate.mode !== 'boxword' && { color: accent },
+                      w.active && activeTemplate.mode === 'boxword' && {
+                        color: '#000000',
+                        backgroundColor: accent,
+                        borderRadius: 6,
+                        paddingHorizontal: 6,
+                      },
                       w.active && {
-                        color: activeTemplate.activeColor,
-                        transform: [{ scale: activeTemplate.activeScale }],
+                        transform: [{ scale: style.animation === 'pop' ? 1.12 : activeTemplate.activeScale }],
                       },
                     ]}
                   >
@@ -292,6 +298,7 @@ export default function EditorScreen() {
             </View>
           )}
         </Pressable>
+        {style.position !== 'bottom' && <View style={styles.flexSpacer} />}
 
         {/* line timeline */}
         <ScrollView
@@ -334,8 +341,92 @@ export default function EditorScreen() {
           })}
         </ScrollView>
 
-        {/* style cards: your frame, each style on it */}
-        <View style={styles.styleRow}>
+        {/* style studio: look · colour · font · position · motion */}
+        <View style={styles.studioTabs}>
+          {([
+            ['look', 'לוק'],
+            ['color', 'צבע'],
+            ['font', 'פונט'],
+            ['position', 'מיקום'],
+            ['motion', 'תנועה'],
+          ] as const).map(([id, label]) => (
+            <Pressable
+              key={id}
+              onPress={() => setStudioTab(id)}
+              style={[styles.studioTab, studioTab === id && styles.studioTabActive]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: studioTab === id }}
+            >
+              <Text style={[styles.studioTabText, studioTab === id && styles.studioTabTextActive]}>{label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {studioTab === 'color' && (
+          <View style={styles.optionRow}>
+            {ACCENTS.map((a) => (
+              <Pressable
+                key={a.id}
+                onPress={() => setStyle((s) => ({ ...s, accent: a.id }))}
+                style={[styles.swatch, { backgroundColor: a.hex }, style.accent === a.id && styles.swatchActive]}
+                accessibilityRole="button"
+                accessibilityLabel={a.name}
+              />
+            ))}
+          </View>
+        )}
+        {studioTab === 'font' && (
+          <View style={styles.optionRow}>
+            {FONTS.map((f) => (
+              <Pressable
+                key={f.id}
+                onPress={() => setStyle((s) => ({ ...s, font: f.id }))}
+                style={[styles.optionChip, style.font === f.id && styles.optionChipActive]}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.optionChipText, { fontFamily: f.family }, style.font === f.id && styles.optionChipTextActive]}>
+                  {f.name} · שלום
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {studioTab === 'position' && (
+          <View style={styles.optionRow}>
+            {POSITIONS.map((o) => (
+              <Pressable
+                key={o.id}
+                onPress={() => setStyle((s) => ({ ...s, position: o.id }))}
+                style={[styles.optionChip, style.position === o.id && styles.optionChipActive]}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.optionChipText, style.position === o.id && styles.optionChipTextActive]}>{o.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {studioTab === 'motion' && (
+          <View style={styles.optionRow}>
+            {ANIMATIONS.map((o) => (
+              <Pressable
+                key={o.id}
+                onPress={() => setStyle((s) => ({ ...s, animation: o.id }))}
+                style={[styles.optionChip, style.animation === o.id && styles.optionChipActive]}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.optionChipText, style.animation === o.id && styles.optionChipTextActive]}>{o.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+
+        {studioTab === 'look' && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.styleRow}
+          style={styles.styleScroll}
+        >
           {TEMPLATES.map((t) => {
             const active = t.id === templateId;
             const s = captionStyleFor(t);
@@ -351,7 +442,7 @@ export default function EditorScreen() {
                 <View
                   style={[
                     styles.styleCard,
-                    { width: styleCardW, height: styleCardH },
+                    { width: 72, height: 92 },
                     active && styles.styleCardActive,
                   ]}
                 >
@@ -373,7 +464,8 @@ export default function EditorScreen() {
                         style={[
                           styles.styleCardText,
                           s.text,
-                          t.mode === 'highlight' && { color: t.activeColor },
+                          (t.mode === 'highlight' || t.mode === 'fill' || t.mode === 'neon') && { color: accent },
+                          t.mode === 'boxword' && { color: '#000000', backgroundColor: accent, borderRadius: 3, paddingHorizontal: 3 },
                           t.mode === 'reveal' && { opacity: 0.35 },
                         ]}
                       >
@@ -390,7 +482,8 @@ export default function EditorScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </ScrollView>
+        )}
 
         {/* single floating action */}
         <Pressable
@@ -590,12 +683,44 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#4ADE80',
   },
-  styleRow: {
-    paddingHorizontal: 16,
-    marginBottom: 14,
+  styleScroll: { flexGrow: 0, marginBottom: 14 },
+  styleRow: { paddingHorizontal: 16, gap: 8, flexDirection: 'row-reverse' },
+  studioTabs: {
     flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 10,
+    paddingHorizontal: 16,
   },
+  studioTab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  studioTabActive: { backgroundColor: 'rgba(255,255,255,0.14)' },
+  studioTabText: { color: 'rgba(255,255,255,0.55)', fontSize: 13, fontFamily: fonts.medium },
+  studioTabTextActive: { color: '#FFFFFF', fontFamily: fonts.bold },
+  optionRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    minHeight: 92,
+    marginBottom: 14,
+  },
+  swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: 'transparent' },
+  swatchActive: { borderColor: '#FFFFFF' },
+  optionChip: {
+    paddingHorizontal: 16,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(20,20,24,0.55)',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  optionChipActive: { borderColor: colors.accent },
+  optionChipText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontFamily: fonts.medium },
+  optionChipTextActive: { color: '#FFFFFF' },
+  flexSpacerSmall: { height: 90 },
+  captionZoneCenter: { justifyContent: 'center' },
   styleCardWrap: { alignItems: 'center', gap: 5 },
   styleCard: {
     borderRadius: 14,

@@ -81,6 +81,9 @@ export function previewWords(
   const active = activeWordIndex(line, t);
   switch (template.mode) {
     case 'highlight':
+    case 'boxword':
+    case 'fill':
+    case 'neon':
       return line.words.map((w, i) => ({ text: w.w, active: i === active }));
     case 'reveal':
       return line.words.slice(0, active + 1).map((w) => ({ text: w.w, active: false }));

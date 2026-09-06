@@ -5,6 +5,8 @@ import {
   Rubik_900Black,
   useFonts,
 } from '@expo-google-fonts/rubik';
+import { Heebo_700Bold } from '@expo-google-fonts/heebo';
+import { SecularOne_400Regular } from '@expo-google-fonts/secular-one';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -23,6 +25,8 @@ export default function RootLayout() {
     Rubik_500Medium,
     Rubik_700Bold,
     Rubik_900Black,
+    Heebo_700Bold,
+    SecularOne_400Regular,
   });
 
   useEffect(() => {
