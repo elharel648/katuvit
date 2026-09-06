@@ -40,6 +40,8 @@ export type AccentId = 'yellow' | 'green' | 'pink' | 'cyan' | 'orange' | 'white'
 export type FontId = 'rubik' | 'heebo' | 'secular';
 export type PositionId = 'bottom' | 'center' | 'top' | 'custom';
 export type AnimationId = 'none' | 'pop';
+/** output frame: keep the source, or crop to a platform canvas */
+export type FormatId = 'original' | 'reel' | 'portrait' | 'square' | 'wide';
 
 /** everything that shapes the burned captions besides the text itself */
 export interface StyleChoice {
@@ -51,6 +53,8 @@ export interface StyleChoice {
   /** caption centre as fractions of the video frame — set by dragging (position === 'custom') */
   posX?: number;
   posY?: number;
+  /** platform frame the export is cropped to (default: original) */
+  format?: FormatId;
 }
 
 export interface CaptionTemplate {

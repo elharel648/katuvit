@@ -60,7 +60,27 @@ DEFAULT_FONT = "rubik"
 # alignment (numpad) + vertical margin on the 1080x1920 canvas; "custom" = dragged by the user
 POSITIONS = {"bottom": (2, 480), "center": (5, 0), "top": (8, 320), "custom": (5, 0)}
 DEFAULT_POSITION = "bottom"
-CANVAS_W, CANVAS_H = 1080, 1920
+CANVAS_W, CANVAS_H = 1080, 1920  # the design canvas; other formats scale from it
+
+# output canvases per platform (width, height at 1080p quality)
+FORMATS = {
+    "reel":     (1080, 1920),   # TikTok / Reels / Stories 9:16
+    "square":   (1080, 1080),   # Instagram / Facebook feed 1:1
+    "portrait": (1080, 1350),   # Instagram feed 4:5
+    "wide":     (1920, 1080),   # YouTube / Facebook 16:9
+}
+DEFAULT_FORMAT = "original"          # keep the source aspect, no crop
+ALL_FORMATS = {DEFAULT_FORMAT, *FORMATS}
+
+
+def canvas_for(fmt: str, quality: str = "1080p") -> tuple[int, int | None]:
+    """Output (width, height) for a platform format; height None = keep the source aspect."""
+    if fmt not in FORMATS:
+        return (720 if quality == "720p" else 1080), None
+    w, h = FORMATS[fmt]
+    if quality == "720p":
+        w, h = (w * 2) // 3, (h * 2) // 3
+    return w - w % 2, h - h % 2
 
 
 def clamp_frac(value, default: float) -> float:
@@ -103,6 +123,7 @@ def style_options(body: dict) -> dict:
         # centre of the caption as fractions of the frame (only used when position == "custom")
         "pos_x": clamp_frac(body.get("pos_x"), 0.5),
         "pos_y": clamp_frac(body.get("pos_y"), 0.75),
+        "format": body.get("format") if body.get("format") in ALL_FORMATS else DEFAULT_FORMAT,
     }
 MAX_WORDS_PER_LINE = 24
 
@@ -268,11 +289,25 @@ def build_ass(
     animation: str = DEFAULT_ANIMATION,
     pos_x: float = 0.5,
     pos_y: float = 0.75,
+    fmt: str = DEFAULT_FORMAT,
 ) -> str:
     tpl = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
+    play_w, play_h = FORMATS.get(fmt, (CANVAS_W, CANVAS_H))
+    # Sizes were designed on the 1080×1920 canvas. Text scales with the frame AREA (geometric mean of
+    # the two ratios) so a caption covers the same share of a square or wide frame as of a reel —
+    # pure height scaling made 16:9 captions tiny. Margins stay axis-relative so presets land where
+    # they should (bottom = 25 % up the frame, top = 1/6 down).
+    k = ((play_w * play_h) / (CANVAS_W * CANVAS_H)) ** 0.5
+    kh = play_h / CANVAS_H
+    kw = play_w / CANVAS_W
+    font_px = max(24, int(round(font_size * k)))
+    outline_px = max(1, int(round(tpl["outline"] * k))) if tpl["outline"] else 0
+    shadow_px = int(round(tpl["shadow"] * k))
+    margin_lr = int(round(70 * kw))
     accent_c = ACCENTS.get(accent, ACCENTS[DEFAULT_ACCENT])
     font_name = FONTS.get(font, FONTS[DEFAULT_FONT])
     align, margin_v = POSITIONS.get(position, POSITIONS[DEFAULT_POSITION])
+    margin_v = int(round(margin_v * kh))
     border_style = tpl["border"]
     mode = tpl["mode"]
     # colours per look: primary/secondary drive \kf fills; outline colour is the box for BorderStyle 3
@@ -287,16 +322,17 @@ def build_ass(
         outline_c = accent_c
     if tpl.get("box_colour"):
         back = tpl["box_colour"]
+    mark_px = max(18, int(round(42 * k)))
     header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
+PlayResX: {play_w}
+PlayResY: {play_h}
 WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,{font_name},{font_size},{primary},{secondary},{outline_c},{back},-1,0,0,0,100,100,0,0,{border_style},{tpl['outline']},{tpl['shadow']},{align},70,70,{margin_v},177
-Style: Mark,Noto Sans Hebrew,42,&H60FFFFFF,&H60FFFFFF,&H60000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,9,0,44,120,177
+Style: Cap,{font_name},{font_px},{primary},{secondary},{outline_c},{back},-1,0,0,0,100,100,0,0,{border_style},{outline_px},{shadow_px},{align},{margin_lr},{margin_lr},{margin_v},177
+Style: Mark,Noto Sans Hebrew,{mark_px},&H60FFFFFF,&H60FFFFFF,&H60000000,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,9,0,{int(round(44 * kw))},{int(round(120 * kh))},177
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -308,7 +344,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     glow = "{\\blur4}" if mode == "neon" else ""
     if position == "custom":
         # dragged position: centre anchor (alignment 5) at exact canvas coordinates
-        px, py = int(round(pos_x * CANVAS_W)), int(round(pos_y * CANVAS_H))
+        px, py = int(round(pos_x * play_w)), int(round(pos_y * play_h))
         glow = "{\\pos(%d,%d)}" % (px, py) + glow
     for line in lines:
         for start, end, text in _events_for_line(line, tpl, accent_c, animation):
@@ -375,9 +411,18 @@ def is_hdr(color_transfer, pix_fmt) -> bool:
     return (color_transfer or "") in HDR_TRANSFERS or "10" in (pix_fmt or "")
 
 
-def video_filter(width: int, ass_path: str, hdr: bool) -> str:
-    """Scale → (HDR: tone-map to bt709) → 8-bit → burn subtitles last so they stay full-bright."""
-    chain = [f"scale={width}:-2"]
+def video_filter(width: int, ass_path: str, hdr: bool, height: int | None = None) -> str:
+    """
+    Scale → (HDR: tone-map to bt709) → 8-bit → burn subtitles last so they stay full-bright.
+    With `height`, the source is scaled to COVER width×height and centre-cropped to it (platform formats).
+    """
+    if height:
+        chain = [
+            f"scale={width}:{height}:force_original_aspect_ratio=increase",
+            f"crop={width}:{height}",
+        ]
+    else:
+        chain = [f"scale={width}:-2"]
     if hdr:
         chain += [
             "zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",

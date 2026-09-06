@@ -37,6 +37,7 @@ from captions import (
     FREE_LIFETIME_VIDEOS,
     PRO_MONTHLY_VIDEOS,
     build_ass,
+    canvas_for,
     check_key,
     clamp_font,
     consume,
@@ -352,7 +353,8 @@ def burn(body: dict = Body(...), authorization: str | None = Header(default=None
         return _err("no_lines", 400)
     style = style_options(body)
     font_size = clamp_font(body.get("font_size"))
-    width = 720 if body.get("quality") == "720p" else 1080
+    quality = "720p" if body.get("quality") == "720p" else "1080p"
+    width, height = canvas_for(style["format"], quality)
 
     bucket = _bucket()
     src_blob = bucket.blob(f"src/{media_id}")
@@ -368,13 +370,13 @@ def burn(body: dict = Body(...), authorization: str | None = Header(default=None
             f.write(build_ass(
                 lines, style["template"], font_size, watermark=watermark,
                 accent=style["accent"], font=style["font"], position=style["position"], animation=style["animation"],
-                pos_x=style["pos_x"], pos_y=style["pos_y"],
+                pos_x=style["pos_x"], pos_y=style["pos_y"], fmt=style["format"],
             ))
         out = os.path.join(td, "out.mp4")
         try:
             subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-i", src,
-                 "-vf", video_filter(width, ass_path, hdr),
+                 "-vf", video_filter(width, ass_path, hdr, height),
                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
                  "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
                  "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",

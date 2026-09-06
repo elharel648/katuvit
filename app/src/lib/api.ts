@@ -207,6 +207,7 @@ export async function burnAndDownload(
       pos_x: params.style.posX ?? 0.5,
       pos_y: params.style.posY ?? 0.75,
       animation: params.style.animation,
+      format: params.style.format ?? 'original',
       lines: params.lines,
       quality: params.quality,
       font_size: params.fontSize,
@@ -214,7 +215,10 @@ export async function burnAndDownload(
     BURN_TIMEOUT_MS,
   );
 
-  const dest = `${LegacyFS.cacheDirectory}katuvit-${params.mediaId}-${Date.now()}.mp4`;
+  // the file name is what the share sheet shows, so keep it human
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+  const dest = `${LegacyFS.cacheDirectory}Katuvit-${stamp}.mp4`;
   const download = LegacyFS.createDownloadResumable(
     ticket.download_url,
     dest,

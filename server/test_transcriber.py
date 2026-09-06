@@ -26,6 +26,8 @@ from captions import (  # noqa: E402
     ACCENTS,
     style_options,
     strip_fillers,
+    canvas_for,
+    FORMATS,
     quota_decision,
     FREE_LIFETIME_VIDEOS,
     PRO_MONTHLY_VIDEOS,
@@ -214,7 +216,7 @@ def test_watermark_only_for_free_tier():
 
 
 def test_style_options_whitelist():
-    base = {"template": "bold", "accent": "yellow", "font": "rubik", "position": "bottom", "animation": "none", "pos_x": 0.5, "pos_y": 0.75}
+    base = {"template": "bold", "accent": "yellow", "font": "rubik", "position": "bottom", "animation": "none", "pos_x": 0.5, "pos_y": 0.75, "format": "original"}
     assert style_options({}) == base
     chosen = style_options({"template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"})
     assert chosen == {**base, "template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"}
@@ -224,6 +226,8 @@ def test_style_options_whitelist():
     drag = style_options({"position": "custom", "pos_x": 0.2, "pos_y": 1.7})
     assert (drag["position"], drag["pos_x"], drag["pos_y"]) == ("custom", 0.2, 0.95)
     assert style_options({"position": "custom", "pos_x": "nope"})["pos_x"] == 0.5
+    assert style_options({"format": "square"})["format"] == "square"
+    assert style_options({"format": "banner"})["format"] == "original"
 
 
 def test_looks_render_their_signature_tags():
@@ -280,6 +284,30 @@ def test_custom_position_pins_every_event():
     assert ",5,70,70,0,177" in ass                          # centre anchor for \\pos
     assert ass.count("{\\pos(270,768)}") == 3                # 0.25*1080, 0.4*1920 on all 3 karaoke events
     assert "{\\pos(" not in build_ass(lines, "bold", 100, position="top")
+
+
+def test_platform_formats_scale_the_canvas():
+    assert canvas_for("reel") == (1080, 1920) and canvas_for("square") == (1080, 1080)
+    assert canvas_for("portrait") == (1080, 1350) and canvas_for("wide") == (1920, 1080)
+    assert canvas_for("reel", "720p") == (720, 1280) and canvas_for("square", "720p") == (720, 720)
+    assert canvas_for("original") == (1080, None) and canvas_for("original", "720p") == (720, None)
+    assert canvas_for("nonsense") == (1080, None)
+    assert style_options({})["format"] == "original"
+    assert "PlayResX: 1080\nPlayResY: 1920" in build_ass(normalize_lines([LINE]), "bold", 108, fmt="original")
+    lines = normalize_lines([LINE])
+    sq = build_ass(lines, "bold", 108, fmt="square")
+    assert "PlayResX: 1080\nPlayResY: 1080" in sq
+    assert "Style: Cap,Rubik,81," in sq                      # 108 * sqrt(1080*1080 / (1080*1920)) = 0.75
+    assert ",2,70,70,270,177" in sq                           # bottom margin 480 * 1080/1920 (height-relative)
+    wide = build_ass(lines, "bold", 108, fmt="wide", position="custom", pos_x=0.5, pos_y=0.9)
+    assert "PlayResX: 1920\nPlayResY: 1080" in wide and "{\\pos(960,972)}" in wide
+    assert "Style: Cap,Rubik,108," in wide                    # same area share as a reel
+    top = build_ass(lines, "bold", 108, fmt="wide", position="top")
+    assert ",8,124,124,180,177" in top                        # margins: 70*1920/1080 sideways, 320*1080/1920 down
+    # cover-crop filter for a platform canvas
+    vf = video_filter(1080, "/tmp/c.ass", hdr=False, height=1080)
+    assert vf.startswith("scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080,")
+    assert video_filter(1080, "/tmp/c.ass", hdr=False).startswith("scale=1080:-2,")
 
 
 def test_media_id_regex():

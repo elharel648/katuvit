@@ -1,4 +1,4 @@
-import type { AccentId, AnimationId, CaptionTemplate, FontId, PositionId, StyleChoice } from './types';
+import type { AccentId, AnimationId, CaptionTemplate, FontId, FormatId, PositionId, StyleChoice } from './types';
 
 /**
  * The looks. Ids and modes mirror server/captions.py TEMPLATES — the server owns
@@ -45,12 +45,26 @@ export const ANIMATIONS: { id: AnimationId; name: string }[] = [
   { id: 'pop',  name: 'קפיצה' },
 ];
 
+/** output frames — the video is centre-cropped to the chosen canvas on the server */
+export const FORMATS: { id: FormatId; name: string; hint: string; aspect: number | null }[] = [
+  { id: 'original', name: 'מקורי',  hint: 'כמו הסרטון שהעליתם',        aspect: null },
+  { id: 'reel',     name: '9:16',   hint: 'טיקטוק · רילס · סטורי',      aspect: 9 / 16 },
+  { id: 'portrait', name: '4:5',    hint: 'פוסט באינסטגרם',             aspect: 4 / 5 },
+  { id: 'square',   name: '1:1',    hint: 'פוסט מרובע · פייסבוק',       aspect: 1 },
+  { id: 'wide',     name: '16:9',   hint: 'יוטיוב · פייסבוק לרוחב',     aspect: 16 / 9 },
+];
+
+export function formatAspect(id: FormatId | undefined): number | null {
+  return FORMATS.find((f) => f.id === id)?.aspect ?? null;
+}
+
 export const DEFAULT_STYLE: StyleChoice = {
   template: 'bold',
   accent: 'yellow',
   font: 'rubik',
   position: 'bottom',
   animation: 'none',
+  format: 'original',
 };
 
 export function accentHex(id: AccentId): string {

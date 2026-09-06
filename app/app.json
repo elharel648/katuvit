@@ -15,6 +15,7 @@
         "NSPhotoLibraryUsageDescription": "כדי לבחור סרטון מהגלריה ולהוסיף לו כתוביות",
         "NSPhotoLibraryAddUsageDescription": "כדי לשמור את הסרטון עם הכתוביות לגלריה שלך",
         "ITSAppUsesNonExemptEncryption": false,
+        "LSApplicationQueriesSchemes": ["instagram", "instagram-stories", "snssdk1233", "tiktok", "fb"],
         "CFBundleDevelopmentRegion": "he",
         "CFBundleLocalizations": [
           "he",

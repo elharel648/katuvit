@@ -47,7 +47,7 @@ import {
 } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { CAPTION_SIZE_FONT, CAPTION_SIZE_LABELS, getSettings, type CaptionSize } from '@/lib/settings';
-import { ACCENTS, ANIMATIONS, FONTS, POSITIONS, PRESET_Y, TEMPLATES, accentHex, fontFamily } from '@/lib/templates';
+import { ACCENTS, ANIMATIONS, FONTS, FORMATS, POSITIONS, PRESET_Y, TEMPLATES, accentHex, fontFamily, formatAspect } from '@/lib/templates';
 import { colors, fonts } from '@/lib/theme';
 import type { CaptionLine, CaptionTemplate, StyleChoice, TranscriptSegment } from '@/lib/types';
 
@@ -102,7 +102,7 @@ export default function EditorScreen() {
   const [style, setStyle] = useState<StyleChoice>(() => getSettings().defaultStyle);
   const templateId = style.template;
   const setTemplateId = (id: string) => setStyle((s) => ({ ...s, template: id }));
-  const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion' | 'size'>('look');
+  const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion' | 'size' | 'format'>('look');
   const accent = accentHex(style.accent);
   const previewFont = fontFamily(style.font);
   const insets = useSafeAreaInsets();
@@ -110,16 +110,19 @@ export default function EditorScreen() {
   // --- where the video actually is on screen (contain) so drag positions map 1:1 to the burn ---
   const [screen, setScreen] = useState({ w: 0, h: 0 });
   const [videoAspect, setVideoAspect] = useState(9 / 16);
+  // the output frame: a platform canvas (video centre-cropped into it) or the source itself
+  const frameAspect = formatAspect(style.format) ?? videoAspect;
+  const cropped = style.format !== undefined && style.format !== 'original';
   const rect = useMemo(() => {
     const { w, h } = screen;
     if (!w || !h) return { x: 0, y: 0, w: 0, h: 0 };
-    if (videoAspect < w / h) {
-      const rw = h * videoAspect;
+    if (frameAspect < w / h) {
+      const rw = h * frameAspect;
       return { x: (w - rw) / 2, y: 0, w: rw, h };
     }
-    const rh = w / videoAspect;
+    const rh = w / frameAspect;
     return { x: 0, y: (h - rh) / 2, w, h: rh };
-  }, [screen, videoAspect]);
+  }, [screen, frameAspect]);
 
   // caption centre in screen pixels (shared with the UI thread for a smooth drag)
   const cx = useSharedValue(0);
@@ -265,6 +268,50 @@ export default function EditorScreen() {
   };
 
   const [savedToPhotos, setSavedToPhotos] = useState(false);
+
+  /**
+   * "Post to …" from the success sheet. iOS lets no app publish a Reel/TikTok on the user's
+   * behalf, so this does what CapCut does: make sure the video is in Photos, then hand it to
+   * the platform's app — Instagram opens straight on the saved asset (library deep link),
+   * TikTok opens on its camera roll, Facebook + "more" go through the system share sheet
+   * (Facebook's own extension posts directly from there). Anything unavailable falls back
+   * to the share sheet, so the button always leads somewhere.
+   */
+  const postTo = async (target: 'instagram' | 'tiktok' | 'facebook' | 'more') => {
+    if (!exportedUri) return;
+    const shareSheet = () => Sharing.shareAsync(exportedUri, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' });
+    if (target === 'more' || target === 'facebook') {
+      await shareSheet();
+      return;
+    }
+    if (!savedToPhotos) await saveToPhotos(exportedUri);
+    try {
+      if (target === 'instagram') {
+        // full read access lets us look up the identifier of the asset we just saved
+        const perm = await MediaLibrary.requestPermissionsAsync(false);
+        let assetId: string | null = null;
+        if (perm.granted) {
+          const page = await MediaLibrary.getAssetsAsync({
+            first: 1,
+            mediaType: 'video',
+            sortBy: [[MediaLibrary.SortBy.creationTime, false]],
+          });
+          assetId = page.assets[0]?.id ?? null;
+        }
+        if (assetId) {
+          await Linking.openURL(`instagram://library?LocalIdentifier=${encodeURIComponent(assetId)}`);
+        } else {
+          await Linking.openURL('instagram://camera');
+        }
+        return;
+      }
+      // TikTok has no public "open with this video" link — open the app; the export is the newest clip
+      await Linking.openURL('snssdk1233://');
+    } catch (e) {
+      console.log('[share] app not available, falling back to the share sheet', e);
+      await shareSheet();
+    }
+  };
   /**
    * Save the export to Photos. `silent` is the automatic attempt right after export;
    * the button in the success sheet calls it loudly so a refused permission is explained.
@@ -411,12 +458,14 @@ export default function EditorScreen() {
           onLayout={(e) => setScreen({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
         >
           {videoUri ? (
-            <VideoView
-              player={player}
-              style={StyleSheet.absoluteFill}
-              contentFit="contain"
-              nativeControls={false}
-            />
+            <View style={[styles.frame, { left: rect.x, top: rect.y, width: rect.w, height: rect.h }, cropped && styles.frameCropped]}>
+              <VideoView
+                player={player}
+                style={StyleSheet.absoluteFill}
+                contentFit={cropped ? 'cover' : 'contain'}
+                nativeControls={false}
+              />
+            </View>
           ) : (
             <LinearGradient
               colors={['#1A1A1E', '#0B0B0D']}
@@ -521,7 +570,7 @@ export default function EditorScreen() {
         </ScrollView>
 
         {/* style studio: look · colour · font · position · motion */}
-        <View style={styles.studioTabs}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.studioTabsScroll} contentContainerStyle={styles.studioTabs}>
           {([
             ['look', 'לוק'],
             ['color', 'צבע'],
@@ -529,6 +578,7 @@ export default function EditorScreen() {
             ['position', 'מיקום'],
             ['motion', 'תנועה'],
             ['size', 'גודל'],
+            ['format', 'פורמט'],
           ] as const).map(([id, label]) => (
             <Pressable
               key={id}
@@ -540,7 +590,7 @@ export default function EditorScreen() {
               <Text style={[styles.studioTabText, studioTab === id && styles.studioTabTextActive]}>{label}</Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
 
         {studioTab === 'color' && (
           <View style={styles.optionRow}>
@@ -588,6 +638,36 @@ export default function EditorScreen() {
                 <Text style={[styles.optionChipText, style.position === o.id && styles.optionChipTextActive]}>{o.name}</Text>
               </Pressable>
             ))}
+          </View>
+        )}
+        {studioTab === 'format' && (
+          <View style={styles.formatBlock}>
+            <View style={styles.formatRow}>
+              {FORMATS.map((f) => {
+                const active = (style.format ?? 'original') === f.id;
+                const a = f.aspect ?? videoAspect;
+                // a tiny frame glyph in the real proportions
+                const gw = a >= 1 ? 22 : Math.max(10, Math.round(22 * a));
+                const gh = a >= 1 ? Math.max(10, Math.round(22 / a)) : 22;
+                return (
+                  <Pressable
+                    key={f.id}
+                    onPress={() => setStyle((s) => ({ ...s, format: f.id }))}
+                    style={[styles.formatChip, active && styles.formatChipActive]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                    accessibilityLabel={`${f.name} · ${f.hint}`}
+                  >
+                    <View style={[styles.formatGlyph, { width: gw, height: gh }, active && styles.formatGlyphActive]} />
+                    <Text style={[styles.formatChipText, active && styles.formatChipTextActive]}>{f.name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={styles.formatHint}>
+              {FORMATS.find((f) => f.id === (style.format ?? 'original'))?.hint}
+              {cropped ? ' · הסרטון נחתך למרכז' : ''}
+            </Text>
           </View>
         )}
         {studioTab === 'size' && (
@@ -714,19 +794,33 @@ export default function EditorScreen() {
       >
         <View style={styles.successBackdrop}>
           <View style={styles.successCard}>
-            <Text style={styles.successEmoji}>🎬</Text>
-            <Text style={styles.successTitle}>הסרטון בגלריה!</Text>
+            <Text style={styles.successTitle}>מוכן לפרסום</Text>
             <Text style={styles.successSub}>
               {savedToPhotos
-                ? 'נשמר לגלריה · עם הכתוביות צרובות'
-                : 'מוכן · עם הכתוביות צרובות'}
+                ? 'נשמר לגלריה · הכתוביות צרובות בסרטון'
+                : 'הכתוביות צרובות בסרטון'}
             </Text>
-            <Pressable
-              style={styles.successShare}
-              onPress={() => exportedUri && Sharing.shareAsync(exportedUri)}
-            >
-              <Text style={styles.successShareText}>שיתוף</Text>
-            </Pressable>
+            <View style={styles.platformRow}>
+              {([
+                ['instagram', 'אינסטגרם', 'camera'],
+                ['tiktok', 'טיקטוק', 'music.note'],
+                ['facebook', 'פייסבוק', 'person.2'],
+                ['more', 'עוד', 'square.and.arrow.up'],
+              ] as const).map(([id, label, symbol]) => (
+                <Pressable
+                  key={id}
+                  style={styles.platformTile}
+                  onPress={() => postTo(id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={id === 'more' ? 'שיתוף' : `פרסום ב${label}`}
+                >
+                  <View style={[styles.platformIcon, id === 'instagram' && styles.platformIconPrimary]}>
+                    <SymbolView name={symbol} size={22} tintColor={id === 'instagram' ? colors.onAccent : '#FFFFFF'} />
+                  </View>
+                  <Text style={styles.platformLabel}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
             {!savedToPhotos && (
               <Pressable
                 style={styles.successSecondary}
@@ -889,6 +983,27 @@ const styles = StyleSheet.create({
   },
   chrome: { flex: 1 },
   stage: { flex: 1, marginTop: 6, marginBottom: 10, overflow: 'hidden' },
+  frame: { position: 'absolute', overflow: 'hidden', backgroundColor: '#000000' },
+  frameCropped: { borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)' },
+  formatBlock: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16, minHeight: 113, marginBottom: 14 },
+  formatRow: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 8 },
+  formatChip: {
+    width: 62,
+    height: 62,
+    borderRadius: 16,
+    backgroundColor: 'rgba(20,20,24,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  formatChipActive: { borderColor: colors.accent },
+  formatGlyph: { borderRadius: 3, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.55)' },
+  formatGlyphActive: { borderColor: colors.accent },
+  formatChipText: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontFamily: fonts.medium },
+  formatChipTextActive: { color: '#FFFFFF' },
+  formatHint: { color: 'rgba(255,255,255,0.5)', fontSize: 12.5, fontFamily: fonts.regular },
   topBar: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
@@ -1018,14 +1133,15 @@ const styles = StyleSheet.create({
   },
   styleScroll: { flexGrow: 0, marginBottom: 14 },
   styleRow: { paddingHorizontal: 16, gap: 8, flexDirection: 'row-reverse' },
+  studioTabsScroll: { flexGrow: 0, marginBottom: 10 },
   studioTabs: {
+    flexGrow: 1,
     flexDirection: 'row-reverse',
     justifyContent: 'center',
-    gap: 6,
-    marginBottom: 10,
-    paddingHorizontal: 16,
+    gap: 4,
+    paddingHorizontal: 12,
   },
-  studioTab: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  studioTab: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
   studioTabActive: { backgroundColor: 'rgba(255,255,255,0.14)' },
   studioTabText: { color: 'rgba(255,255,255,0.55)', fontSize: 13, fontFamily: fonts.medium },
   studioTabTextActive: { color: '#FFFFFF', fontFamily: fonts.bold },
@@ -1035,7 +1151,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
     paddingHorizontal: 16,
-    minHeight: 92,
+    minHeight: 113, // = the look row (92 card + 5 gap + label) so the stage never jumps between tabs
     marginBottom: 14,
   },
   swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: 'transparent' },
@@ -1098,14 +1214,33 @@ const styles = StyleSheet.create({
     padding: 32,
   },
   successCard: {
-    backgroundColor: '#131829',
+    backgroundColor: '#141418',
+    borderWidth: 1,
+    borderColor: colors.border,
     borderRadius: 28,
     padding: 28,
     alignItems: 'center',
     gap: 8,
     alignSelf: 'stretch',
   },
-  successEmoji: { fontSize: 44 },
+  platformRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    gap: 14,
+    alignSelf: 'stretch',
+    marginBottom: 14,
+  },
+  platformTile: { alignItems: 'center', gap: 8, width: 64 },
+  platformIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  platformIconPrimary: { backgroundColor: colors.accent },
+  platformLabel: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontFamily: fonts.medium },
   successTitle: { color: '#FFFFFF', fontSize: 22, fontFamily: fonts.bold },
   successSub: {
     color: 'rgba(255,255,255,0.55)',
