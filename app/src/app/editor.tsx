@@ -62,7 +62,9 @@ export default function EditorScreen() {
   }, [session]);
 
   const [lines, setLines] = useState<CaptionLine[]>(initialLines);
-  const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
+  const [templateId, setTemplateId] = useState(
+    () => TEMPLATES.find((t) => t.id === getSettings().defaultTemplate)?.id ?? TEMPLATES[0].id,
+  );
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string>(initialLines[0]?.id);
   const [editingLine, setEditingLine] = useState<CaptionLine | null>(null);

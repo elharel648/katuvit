@@ -7,9 +7,11 @@ export type CaptionSize = 'small' | 'medium' | 'large';
 export interface AppSettings {
   exportQuality: ExportQuality;
   captionSize: CaptionSize;
+  /** template id the editor starts with */
+  defaultTemplate: string;
 }
 
-const DEFAULTS: AppSettings = { exportQuality: '1080p', captionSize: 'medium' };
+const DEFAULTS: AppSettings = { exportQuality: '1080p', captionSize: 'medium', defaultTemplate: 'bold' };
 const KEY = 'katuvit.settings.v1';
 
 let cached: AppSettings = { ...DEFAULTS };

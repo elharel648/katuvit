@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { startCreateFlow, useCreatePhase } from '@/lib/create-flow';
 import { quotaLabel, useEntitlements } from '@/lib/entitlements';
+import { updateSettings, useSettings } from '@/lib/settings';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
@@ -54,6 +55,7 @@ export default function HomeScreen() {
   const session = getSession();
   const create = useCreatePhase();
   const ent = useEntitlements();
+  const settings = useSettings();
 
   useEffect(() => {
     const t = setInterval(
@@ -196,6 +198,51 @@ export default function HomeScreen() {
               </View>
             </Pressable>
           </View>
+
+          {/* the look the next video starts with */}
+          <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>הלוק שלך</Text>
+          <View style={styles.looksRow}>
+            {TEMPLATES.map((t) => {
+              const active = t.id === settings.defaultTemplate;
+              return (
+                <Pressable
+                  key={t.id}
+                  style={[styles.lookTile, active && styles.lookTileActive]}
+                  onPress={() => updateSettings({ defaultTemplate: t.id })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`לוק ${t.name}`}
+                  accessibilityState={{ selected: active }}
+                >
+                  <View
+                    style={[
+                      styles.lookChip,
+                      { backgroundColor: t.backgroundColor ?? 'transparent' },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.lookText,
+                        { color: t.textColor, textShadowColor: t.backgroundColor ? 'transparent' : t.outlineColor },
+                      ]}
+                    >
+                      שלום
+                    </Text>
+                    <Text
+                      style={[
+                        styles.lookText,
+                        { color: t.textColor, textShadowColor: t.backgroundColor ? 'transparent' : t.outlineColor },
+                        t.mode === 'highlight' && { color: t.activeColor },
+                        t.mode === 'reveal' && { opacity: 0.35 },
+                      ]}
+                    >
+                      לכם
+                    </Text>
+                  </View>
+                  <Text style={[styles.lookName, active && styles.lookNameActive]}>{t.name}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
       )}
 
@@ -315,6 +362,38 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     marginBottom: 2,
   },
+  sectionTitleSpaced: { marginTop: 26 },
+  looksRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+    marginTop: 12,
+  },
+  lookTile: {
+    width: '23%',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  lookTileActive: { borderColor: colors.accent },
+  lookChip: {
+    flexDirection: 'row-reverse',
+    gap: 3,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  lookText: {
+    fontSize: 12,
+    fontFamily: fonts.bold,
+    textShadowRadius: 3,
+    textShadowOffset: { width: 0, height: 1 },
+  },
+  lookName: { color: colors.textFaint, fontSize: 12, fontFamily: fonts.regular },
+  lookNameActive: { color: colors.text, fontFamily: fonts.medium },
   newBadge: {
     position: 'absolute',
     bottom: 16,
@@ -333,7 +412,7 @@ const styles = StyleSheet.create({
   },
   reelCard: {
     alignSelf: 'stretch',
-    height: 250,
+    height: 230,
     borderRadius: 24,
     overflow: 'hidden',
     alignItems: 'center',

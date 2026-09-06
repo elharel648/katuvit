@@ -32,6 +32,8 @@ export async function startCreateFlow() {
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['videos'],
+    // iOS's own trimmer opens after picking; with videoMaxDuration it also caps the cut at 3 min
+    allowsEditing: true,
     videoMaxDuration: MAX_SECONDS,
   });
   if (picked.canceled || !picked.assets[0]) return;
