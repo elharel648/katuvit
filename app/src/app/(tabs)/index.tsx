@@ -1,6 +1,5 @@
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
-import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -8,7 +7,6 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import {
-  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
@@ -17,12 +15,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { uploadAndTranscribe } from '@/lib/api';
-import { getSession, startSession } from '@/lib/session';
+import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
-
-type Phase = 'idle' | 'uploading';
 
 /** the product demos itself: one specimen line, cycling through real styles */
 const SPECIMEN_LINES = [
@@ -45,7 +40,6 @@ const breathe = {
 };
 
 export default function HomeScreen() {
-  const [phase, setPhase] = useState<Phase>('idle');
   const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
   const session = getSession();
@@ -64,30 +58,6 @@ export default function HomeScreen() {
       .then((r) => setLastThumb(r.uri))
       .catch(() => {});
   }, [session?.videoUri]);
-
-  const pickAndTranscribe = async () => {
-    const picked = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['videos'],
-      videoMaxDuration: 180,
-    });
-    if (picked.canceled || !picked.assets[0]) return;
-    const asset = picked.assets[0];
-
-    setPhase('uploading');
-    try {
-      const result = await uploadAndTranscribe(asset.uri);
-      startSession({
-        videoUri: asset.uri,
-        segments: result.segments,
-        duration: result.duration,
-      });
-      router.push('/editor');
-    } catch (e) {
-      Alert.alert('משהו השתבש', e instanceof Error ? e.message : 'נסו שוב');
-    } finally {
-      setPhase('idle');
-    }
-  };
 
   const template = TEMPLATES[specimenIdx % TEMPLATES.length];
   const line = SPECIMEN_LINES[specimenIdx % SPECIMEN_LINES.length];
@@ -191,61 +161,6 @@ export default function HomeScreen() {
           </View>
         </View>
       )}
-
-      {/* actions: one yellow primary, glass secondaries */}
-      <View style={styles.actionsRow}>
-        <Pressable style={styles.actionItem} onPress={() => router.push('/editor')}>
-          <BlurView intensity={30} tint="dark" style={styles.glassCircle}>
-            <SymbolView
-              name="wand.and.stars"
-              size={22}
-              tintColor="rgba(255,255,255,0.85)"
-            />
-          </BlurView>
-          <Text style={styles.actionLabel}>דמו</Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.actionItem}
-          onPress={pickAndTranscribe}
-          disabled={phase === 'uploading'}
-        >
-          <Animated.View
-            style={[
-              styles.primaryCircle,
-              {
-                animationName: breathe,
-                animationDuration: '2600ms',
-                animationIterationCount: 'infinite',
-                animationTimingFunction: 'ease-in-out',
-              },
-            ]}
-          >
-            {phase === 'uploading' ? (
-              <ActivityIndicator color={colors.onAccent} />
-            ) : (
-              <SymbolView name="plus" size={30} tintColor={colors.onAccent} />
-            )}
-          </Animated.View>
-          <Text style={[styles.actionLabel, styles.actionLabelPrimary]}>
-            {phase === 'uploading' ? 'מתמלל…' : 'סרטון חדש'}
-          </Text>
-        </Pressable>
-
-        <Pressable
-          style={styles.actionItem}
-          onPress={() => router.push('/projects')}
-        >
-          <BlurView intensity={30} tint="dark" style={styles.glassCircle}>
-            <SymbolView
-              name="film.stack"
-              size={22}
-              tintColor="rgba(255,255,255,0.85)"
-            />
-          </BlurView>
-          <Text style={styles.actionLabel}>הסרטונים</Text>
-        </Pressable>
-      </View>
 
     </SafeAreaView>
   );
@@ -375,44 +290,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: fonts.regular,
   },
-  actionsRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: spacing.xl,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.sm,
-  },
-  actionItem: { alignItems: 'center', gap: 8, width: 76 },
-  primaryCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-  },
-  glassCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    marginTop: 6,
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.12)',
-  },
-  actionLabel: {
-    color: colors.textDim,
-    fontSize: 12,
-    fontFamily: fonts.medium,
-  },
-  actionLabelPrimary: { color: colors.text, fontFamily: fonts.bold },
   footnote: {
     color: colors.textFaint,
     fontSize: 11,

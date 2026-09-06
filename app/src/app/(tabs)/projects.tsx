@@ -49,9 +49,14 @@ export default function ProjectsScreen() {
           </View>
           <Text style={styles.emptyTitle}>עוד אין סרטונים</Text>
           <Text style={styles.emptySub}>
-            הסרטונים שתעבדו עליהם יופיעו כאן.{'\n'}בשלב הזה הם נשמרים רק בזמן
-            השימוש — שמירה מלאה מגיעה בקרוב.
+            הסרטונים שתעבדו עליהם יופיעו כאן.
           </Text>
+          <Pressable
+            style={styles.demoButton}
+            onPress={() => router.push('/editor')}
+          >
+            <Text style={styles.demoButtonText}>אין סרטון ביד? נסו את הדמו</Text>
+          </Pressable>
         </View>
       )}
     </SafeAreaView>
@@ -99,6 +104,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyTitle: { color: colors.text, fontSize: 18, fontFamily: fonts.bold },
+  demoButton: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 20,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoButtonText: {
+    color: colors.textDim,
+    fontSize: 14,
+    fontFamily: fonts.medium,
+  },
   emptySub: {
     color: colors.textFaint,
     fontSize: 14,

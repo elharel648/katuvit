@@ -1,7 +1,22 @@
 import { Tabs } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { startCreateFlow, useCreatePhase } from '@/lib/create-flow';
 import { colors, fonts } from '@/lib/theme';
+
+function CreateButton() {
+  const phase = useCreatePhase();
+  return (
+    <View style={styles.fab}>
+      {phase === 'uploading' ? (
+        <ActivityIndicator color={colors.onAccent} />
+      ) : (
+        <SymbolView name="plus" size={26} tintColor={colors.onAccent} />
+      )}
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   return (
@@ -29,6 +44,19 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="create"
+        options={{
+          title: '',
+          tabBarIcon: () => <CreateButton />,
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            startCreateFlow();
+          },
+        }}
+      />
+      <Tabs.Screen
         name="projects"
         options={{
           title: 'הסרטונים שלי',
@@ -49,3 +77,19 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  fab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -22,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.4,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
+  },
+});
