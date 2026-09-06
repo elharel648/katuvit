@@ -25,9 +25,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
 import { burnAndDownload } from '@/lib/api';
-import { isRtlText, previewWords, retimeWords, splitIntoLines } from '@/lib/captions';
+import {
+  deleteLine,
+  isRtlText,
+  mergeWithNext,
+  nudgeLine,
+  previewWords,
+  removeFillers,
+  retext,
+  retimeWords,
+  splitIntoLines,
+  splitLine,
+  suggestEmoji,
+  toggleEmoji,
+  toggleEmphasis,
+} from '@/lib/captions';
 import { getSession } from '@/lib/session';
-import { CAPTION_SIZE_FONT, getSettings } from '@/lib/settings';
+import { CAPTION_SIZE_FONT, CAPTION_SIZE_LABELS, getSettings, type CaptionSize } from '@/lib/settings';
 import { ACCENTS, ANIMATIONS, FONTS, POSITIONS, TEMPLATES, accentHex, fontFamily } from '@/lib/templates';
 import { colors, fonts } from '@/lib/theme';
 import type { CaptionLine, CaptionTemplate, StyleChoice, TranscriptSegment } from '@/lib/types';
@@ -60,11 +74,30 @@ export default function EditorScreen() {
     return splitIntoLines(segments);
   }, [session]);
 
-  const [lines, setLines] = useState<CaptionLine[]>(initialLines);
+  const [lines, setLinesRaw] = useState<CaptionLine[]>(initialLines);
+  const historyRef = useRef<CaptionLine[][]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  /** every edit goes through here so it can be undone */
+  const commit = (next: CaptionLine[] | ((prev: CaptionLine[]) => CaptionLine[])) => {
+    setLinesRaw((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next;
+      if (value !== prev) {
+        historyRef.current = [...historyRef.current.slice(-30), prev];
+        setCanUndo(true);
+      }
+      return value;
+    });
+  };
+  const undo = () => {
+    const prev = historyRef.current.pop();
+    if (prev) setLinesRaw(prev);
+    setCanUndo(historyRef.current.length > 0);
+  };
+  const [captionSize, setCaptionSize] = useState<CaptionSize>(() => getSettings().captionSize);
   const [style, setStyle] = useState<StyleChoice>(() => getSettings().defaultStyle);
   const templateId = style.template;
   const setTemplateId = (id: string) => setStyle((s) => ({ ...s, template: id }));
-  const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion'>('look');
+  const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion' | 'size'>('look');
   const accent = accentHex(style.accent);
   const previewFont = fontFamily(style.font);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
@@ -144,7 +177,7 @@ export default function EditorScreen() {
         style,
         lines: lines.map((l) => ({ start: l.start, end: l.end, text: l.text, words: l.words })),
         quality: settings.exportQuality,
-        fontSize: CAPTION_SIZE_FONT[settings.captionSize],
+        fontSize: CAPTION_SIZE_FONT[captionSize],
       }, setDownloadProgress);
       // video is ready locally — success now; saving to Photos is a follow-up action
       setExportedUri(uri);
@@ -185,7 +218,7 @@ export default function EditorScreen() {
     // one visual line per caption: newlines/tabs become spaces (the burner does the same)
     const text = raw.replace(/\s+/g, ' ').trim();
     if (text) {
-      setLines((prev) =>
+      commit((prev) =>
         prev.map((l) =>
           l.id === editingLine.id
             ? {
@@ -199,6 +232,38 @@ export default function EditorScreen() {
       );
     }
     closeEdit();
+  };
+
+  /** the sheet always edits the live copy of the line (it may have changed under it) */
+  const sheetLine = editingLine ? lines.find((l) => l.id === editingLine.id) ?? null : null;
+
+  const doDelete = () => {
+    if (!editingLine) return;
+    commit((prev) => deleteLine(prev, editingLine.id));
+    closeEdit();
+  };
+  const doSplit = () => {
+    if (!editingLine) return;
+    commit((prev) => splitLine(prev, editingLine.id));
+    closeEdit();
+  };
+  const doMerge = () => {
+    if (!editingLine) return;
+    commit((prev) => mergeWithNext(prev, editingLine.id));
+    closeEdit();
+  };
+  const doNudge = (delta: number) => {
+    if (!editingLine) return;
+    commit((prev) => nudgeLine(prev, editingLine.id, delta));
+  };
+  const doCleanFillers = () => {
+    let removed = 0;
+    commit((prev) => {
+      const r = removeFillers(prev);
+      removed = r.removed;
+      return r.removed ? r.lines : prev;
+    });
+    setTimeout(() => Alert.alert(removed ? `הוסרו ${removed} מילות מילוי` : 'אין מילות מילוי', ''), 50);
   };
 
   return (
@@ -252,7 +317,18 @@ export default function EditorScreen() {
               {session ? 'הסרטון שלך' : 'מצב דמו'}
             </Text>
           </BlurView>
-          <View style={styles.roundButtonPlaceholder} />
+          <View style={styles.topActions}>
+            <Pressable onPress={doCleanFillers} hitSlop={8} accessibilityRole="button" accessibilityLabel="ניקוי מילות מילוי">
+              <BlurView intensity={40} tint="dark" style={styles.roundButton}>
+                <SymbolView name="sparkles" size={16} tintColor="#FFFFFF" />
+              </BlurView>
+            </Pressable>
+            <Pressable onPress={undo} disabled={!canUndo} hitSlop={8} accessibilityRole="button" accessibilityLabel="ביטול">
+              <BlurView intensity={40} tint="dark" style={[styles.roundButton, !canUndo && styles.roundButtonDisabled]}>
+                <SymbolView name="arrow.uturn.backward" size={16} tintColor="#FFFFFF" />
+              </BlurView>
+            </Pressable>
+          </View>
         </View>
 
         <View style={style.position === 'top' ? styles.flexSpacerSmall : styles.flexSpacer} />
@@ -279,7 +355,10 @@ export default function EditorScreen() {
                       styles.captionText,
                       capStyle.text,
                       { fontFamily: previewFont },
+                      captionSize === 'small' && { fontSize: 22, lineHeight: 28 },
+                      captionSize === 'large' && { fontSize: 30, lineHeight: 36 },
                       activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
+                      !w.active && activeLine.words[i]?.em && { color: accent },
                       w.active && activeTemplate.mode !== 'boxword' && { color: accent },
                       w.active && activeTemplate.mode === 'boxword' && {
                         color: '#000000',
@@ -350,6 +429,7 @@ export default function EditorScreen() {
             ['font', 'פונט'],
             ['position', 'מיקום'],
             ['motion', 'תנועה'],
+            ['size', 'גודל'],
           ] as const).map(([id, label]) => (
             <Pressable
               key={id}
@@ -402,6 +482,20 @@ export default function EditorScreen() {
                 accessibilityRole="button"
               >
                 <Text style={[styles.optionChipText, style.position === o.id && styles.optionChipTextActive]}>{o.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {studioTab === 'size' && (
+          <View style={styles.optionRow}>
+            {(['small', 'medium', 'large'] as CaptionSize[]).map((o) => (
+              <Pressable
+                key={o}
+                onPress={() => setCaptionSize(o)}
+                style={[styles.optionChip, captionSize === o && styles.optionChipActive]}
+                accessibilityRole="button"
+              >
+                <Text style={[styles.optionChipText, captionSize === o && styles.optionChipTextActive]}>{CAPTION_SIZE_LABELS[o]}</Text>
               </Pressable>
             ))}
           </View>
@@ -576,6 +670,59 @@ export default function EditorScreen() {
               returnKeyType="done"
               accessibilityLabel="טקסט הכתובית"
             />
+            {/* words: tap = emphasis (always in the accent colour) · emoji chip = attach */}
+            {sheetLine && sheetLine.text === draft && (
+              <View style={styles.wordChips}>
+                {sheetLine.words.map((w, i) => {
+                  const hint = suggestEmoji(w.w);
+                  return (
+                    <View key={`${sheetLine.id}-${i}`} style={styles.wordChipWrap}>
+                      <Pressable
+                        onPress={() => commit((prev) => toggleEmphasis(prev, sheetLine.id, i))}
+                        style={[styles.wordChip, w.em && { borderColor: accent }]}
+                        accessibilityRole="button"
+                        accessibilityLabel={`הדגשה ${w.w}`}
+                      >
+                        <Text style={[styles.wordChipText, w.em && { color: accent }]}>{w.w}</Text>
+                      </Pressable>
+                      {hint && (
+                        <Pressable
+                          onPress={() => {
+                            commit((prev) => toggleEmoji(prev, sheetLine.id, i, hint));
+                            const updated = lines.find((l) => l.id === sheetLine.id);
+                            if (updated) setDraft(toggleEmoji([updated], sheetLine.id, i, hint)[0].text);
+                          }}
+                          style={styles.emojiChip}
+                          accessibilityRole="button"
+                          accessibilityLabel={`אימוג'י ${hint}`}
+                        >
+                          <Text style={styles.emojiChipText}>{hint}</Text>
+                        </Pressable>
+                      )}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+
+            <View style={styles.sheetActions}>
+              <Pressable style={styles.sheetAction} onPress={() => doNudge(-0.2)} accessibilityRole="button">
+                <Text style={styles.sheetActionText}>−0.2ש׳</Text>
+              </Pressable>
+              <Pressable style={styles.sheetAction} onPress={() => doNudge(0.2)} accessibilityRole="button">
+                <Text style={styles.sheetActionText}>+0.2ש׳</Text>
+              </Pressable>
+              <Pressable style={styles.sheetAction} onPress={doSplit} accessibilityRole="button">
+                <Text style={styles.sheetActionText}>פיצול</Text>
+              </Pressable>
+              <Pressable style={styles.sheetAction} onPress={doMerge} accessibilityRole="button">
+                <Text style={styles.sheetActionText}>איחוד עם הבאה</Text>
+              </Pressable>
+              <Pressable style={[styles.sheetAction, styles.sheetActionDanger]} onPress={doDelete} accessibilityRole="button">
+                <Text style={[styles.sheetActionText, styles.sheetActionDangerText]}>מחיקה</Text>
+              </Pressable>
+            </View>
+
             <Pressable
               style={styles.sheetSave}
               onPress={() => saveEdit(draft)}
@@ -583,7 +730,7 @@ export default function EditorScreen() {
             >
               <Text style={styles.sheetSaveText}>שמירה</Text>
             </Pressable>
-            <Text style={styles.sheetHint}>הקשה מחוץ לחלון מבטלת</Text>
+            <Text style={styles.sheetHint}>הקשה על מילה מדגישה אותה · הקשה מחוץ לחלון מבטלת</Text>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
@@ -626,6 +773,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,20,24,0.35)',
   },
   roundButtonPlaceholder: { width: 44, height: 44 },
+  roundButtonDisabled: { opacity: 0.35 },
+  topActions: { flexDirection: 'row-reverse', gap: 8 },
+  wordChips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' },
+  wordChipWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
+  wordChip: {
+    paddingHorizontal: 12,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: '#1E1E24',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  wordChipText: { color: '#FFFFFF', fontSize: 15, fontFamily: fonts.medium },
+  emojiChip: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#1E1E24', alignItems: 'center', justifyContent: 'center' },
+  emojiChipText: { fontSize: 17 },
+  sheetActions: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8 },
+  sheetAction: { paddingHorizontal: 12, height: 36, borderRadius: 999, backgroundColor: '#1E1E24', justifyContent: 'center' },
+  sheetActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: fonts.medium },
+  sheetActionDanger: { backgroundColor: 'rgba(255,77,77,0.14)' },
+  sheetActionDangerText: { color: '#FF6B6B' },
   titleChip: {
     borderRadius: 999,
     overflow: 'hidden',

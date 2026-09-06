@@ -5,6 +5,8 @@ export interface Word {
   s: number;
   /** end time in seconds */
   e: number;
+  /** always coloured in the accent (user emphasis) */
+  em?: boolean;
 }
 
 export interface TranscriptSegment {
