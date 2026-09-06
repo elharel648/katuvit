@@ -22,6 +22,8 @@ from transcriber import (  # noqa: E402
     clamp_font,
     clean_caption_text,
     even_words,
+    is_hdr,
+    video_filter,
     normalize_lines,
     normalize_words,
 )
@@ -157,6 +159,19 @@ def test_build_ass_structure():
     # user text can never open an override block of its own
     hostile = normalize_lines([{"start": 0, "end": 1, "text": "{\\pos(0,0)}x y"}])
     assert "{\\pos" not in build_ass(hostile, "bold")
+
+
+def test_hdr_detection_and_filter_chain():
+    assert is_hdr("arib-std-b67", "yuv420p10le")      # iPhone HLG
+    assert is_hdr("smpte2084", "yuv420p10le")         # PQ
+    assert is_hdr(None, "yuv420p10le")                # 10-bit without tags
+    assert not is_hdr("bt709", "yuv420p")
+    assert not is_hdr(None, None)
+    sdr = video_filter(1080, "/tmp/c.ass", hdr=False)
+    assert sdr == "scale=1080:-2,format=yuv420p,subtitles=/tmp/c.ass"
+    hdr = video_filter(720, "/tmp/c.ass", hdr=True)
+    assert hdr.startswith("scale=720:-2,zscale=t=linear") and "tonemap=" in hdr
+    assert hdr.endswith("format=yuv420p,subtitles=/tmp/c.ass")   # subtitles burned after SDR conversion
 
 
 def test_media_id_regex():

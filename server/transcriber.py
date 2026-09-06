@@ -228,17 +228,43 @@ def _json(payload: dict, status: int):
     return JSONResponse(payload, status_code=status)
 
 
-def _probe_duration(path: str) -> float:
-    import subprocess
+HDR_TRANSFERS = {"arib-std-b67", "smpte2084"}  # HLG, PQ — iPhone HDR video
+
+
+def is_hdr(color_transfer, pix_fmt) -> bool:
+    """10-bit or HDR-transfer sources must be tone-mapped to 8-bit SDR: iOS cannot
+    decode H.264 High 10, so a naive burn plays BLACK with sound (found 2026-09-06)."""
+    return (color_transfer or "") in HDR_TRANSFERS or "10" in (pix_fmt or "")
+
+
+def video_filter(width: int, ass_path: str, hdr: bool) -> str:
+    """Scale → (HDR: tone-map to bt709) → 8-bit → burn subtitles last so they stay full-bright."""
+    chain = [f"scale={width}:-2"]
+    if hdr:
+        chain += [
+            "zscale=t=linear:npl=100", "format=gbrpf32le", "zscale=p=bt709",
+            "tonemap=tonemap=hable:desat=0", "zscale=t=bt709:m=bt709:r=tv",
+        ]
+    chain += ["format=yuv420p", f"subtitles={ass_path}"]
+    return ",".join(chain)
+
+
+def _probe_video(path: str) -> dict:
+    """{'duration': float (-1 if unreadable), 'hdr': bool} via ffprobe."""
+    import json, subprocess
     out = subprocess.run(
-        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-         "-of", "default=noprint_wrappers=1:nokey=1", path],
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "format=duration:stream=color_transfer,pix_fmt",
+         "-of", "json", path],
         capture_output=True, text=True, timeout=60,
     )
     try:
-        return float(out.stdout.strip())
-    except ValueError:
-        return -1.0
+        info = json.loads(out.stdout or "{}")
+        duration = float(info.get("format", {}).get("duration", -1))
+    except (ValueError, TypeError):
+        return {"duration": -1.0, "hdr": False}
+    streams = info.get("streams") or [{}]
+    return {"duration": duration, "hdr": is_hdr(streams[0].get("color_transfer"), streams[0].get("pix_fmt"))}
 
 
 @app.cls(
@@ -308,7 +334,7 @@ class Transcriber:
                     return _json({"error": "too_large", "max_mb": MAX_UPLOAD_BYTES // (1024 * 1024)}, 413)
                 f.write(chunk)
 
-        duration = _probe_duration(src)
+        duration = _probe_video(src)["duration"]
         if duration < 0:
             os.remove(src)
             return _json({"error": "unreadable_media"}, 400)
@@ -374,10 +400,14 @@ class Transcriber:
                 with open(ass_path, "w", encoding="utf-8") as f:
                     f.write(build_ass(lines, template, font_size))
                 out = os.path.join(td, "out.mp4")
+                hdr = _probe_video(src)["hdr"]
                 subprocess.run(
                     ["ffmpeg", "-y", "-v", "error", "-i", src,
-                     "-vf", f"scale={width}:-2,subtitles={ass_path}",
+                     "-vf", video_filter(width, ass_path, hdr),
+                     # 8-bit High profile + bt709 tags: decodable everywhere (iOS chokes on High 10)
                      "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                     "-pix_fmt", "yuv420p", "-profile:v", "high", "-level", "4.1",
+                     "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709",
                      "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", out],
                     check=True, timeout=FFMPEG_TIMEOUT_S,
                 )
