@@ -190,7 +190,7 @@ def _active_tags(tpl: dict, accent: str, animation: str) -> str:
     """Override block that marks the word being spoken, per look."""
     mode = tpl["mode"]
     if mode == "boxword":
-        tags = "\\3c" + accent + "&\\1c&H00000000&"        # accent box (outline colour with BorderStyle 3), black text
+        tags = "\\4c" + accent + "&\\1c&H00000000&"        # accent box (BackColour drives BorderStyle 3 boxes), black text
     elif mode == "neon":
         tags = "\\1c&H00FFFFFF&\\bord7\\blur6"           # brighter core, wider glow
     else:
@@ -268,7 +268,7 @@ def build_ass(
     if mode == "fill":
         primary, secondary = accent_c, tpl["text"]          # sweeps from text colour to accent
     if mode == "boxword":
-        outline_c = "&HFF000000"                            # transparent boxes until a word is active
+        back = "&HFF000000"                                 # transparent boxes until a word is active (BackColour = box)
     if mode == "neon":
         outline_c = accent_c
     if tpl.get("box_colour"):

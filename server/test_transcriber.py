@@ -227,9 +227,9 @@ def test_looks_render_their_signature_tags():
     ass = build_ass(lines, "clean", 100, accent="green", font="secular", position="top")
     assert "Style: Cap,Secular One,100," in ass and ",8,70,70,320,177" in ass
     assert "{\\c" + ACCENTS["green"] + "&\\fscx108\\fscy108}חברים{\\r}" in ass
-    # boxword: transparent boxes (outline alpha FF) + accent box with black text on the active word
+    # boxword: transparent boxes (BackColour alpha FF) + accent box (\\4c) with black text on the active word
     bw = build_ass(lines, "boxword", 100)
-    assert ",&HFF000000," in bw and "\\3c" + ACCENTS["yellow"] + "&\\1c&H00000000&}חברים" in bw
+    assert ",&HFF000000," in bw and "\\4c" + ACCENTS["yellow"] + "&\\1c&H00000000&}חברים" in bw
     # fill: one event per line with \kf durations in centiseconds, primary = accent
     fl = build_ass(lines, "fill", 100)
     assert fl.count("Dialogue: 0,") == 1 and "{\\kf60}טוב {\\kf80}חברים {\\kf60}יש" in fl
