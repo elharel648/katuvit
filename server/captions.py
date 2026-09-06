@@ -32,7 +32,7 @@ WHITE, BLACK, YELLOW = "&H00FFFFFF", "&H00000000", "&H002ED5FF"
 # border: 1 = outline+shadow, 3 = box per word (used with transparent box for boxword), 4 = one box per line
 TEMPLATES = {
     "bold":    {"mode": "highlight", "border": 4, "outline": 9, "shadow": 0, "text": WHITE, "scale": 100},
-    "boxword": {"mode": "boxword",   "border": 3, "outline": 12, "shadow": 0, "text": WHITE, "scale": 100},
+    "boxword": {"mode": "boxword",   "border": 3, "outline": 10, "shadow": 0, "text": WHITE, "scale": 100},
     "fill":    {"mode": "fill",      "border": 1, "outline": 5, "shadow": 2, "text": WHITE, "scale": 100},
     "neon":    {"mode": "neon",      "border": 1, "outline": 4, "shadow": 0, "text": WHITE, "scale": 104},
     "reveal":  {"mode": "reveal",    "border": 1, "outline": 5, "shadow": 2, "text": WHITE, "scale": 100},
@@ -202,7 +202,7 @@ def _active_tags(tpl: dict, accent: str, animation: str) -> str:
     """Override block that marks the word being spoken, per look."""
     mode = tpl["mode"]
     if mode == "boxword":
-        tags = "\\4c" + accent + "&\\1c&H00000000&"        # accent box (BackColour drives BorderStyle 3 boxes), black text
+        tags = "\\3c" + accent + "&\\1c&H00000000&"        # BorderStyle 3 boxes are drawn in OutlineColour; black text on the accent box
     elif mode == "neon":
         tags = "\\1c&H00FFFFFF&\\bord7\\blur6"           # brighter core, wider glow
     else:
@@ -281,8 +281,8 @@ def build_ass(
     back = "&H9A000000" if border_style == 4 else "&H80000000"
     if mode == "fill":
         primary, secondary = accent_c, tpl["text"]          # sweeps from text colour to accent
-    if mode == "boxword":
-        back = "&HFF000000"                                 # transparent boxes until a word is active (BackColour = box)
+    # boxword keeps the opaque black OutlineColour: libass only draws BorderStyle-3 boxes when it is opaque,
+    # so every word gets a black box and the spoken word's box switches to the accent (the "word box" look)
     if mode == "neon":
         outline_c = accent_c
     if tpl.get("box_colour"):
