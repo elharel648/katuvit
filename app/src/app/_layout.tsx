@@ -11,7 +11,6 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { fetchMe } from '@/lib/api';
 import { ensureSignedIn } from '@/lib/auth';
@@ -45,7 +44,7 @@ export default function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -57,6 +56,6 @@ export default function RootLayout() {
         <Stack.Screen name="editor" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="paywall" options={{ presentation: 'modal' }} />
       </Stack>
-    </GestureHandlerRootView>
+    </>
   );
 }

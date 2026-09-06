@@ -21,7 +21,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -335,7 +335,7 @@ export default function EditorScreen() {
   };
 
   return (
-    <View style={styles.screen} onLayout={(e) => setScreen({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
+    <GestureHandlerRootView style={styles.screen} onLayout={(e) => setScreen({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
       {/* the video IS the interface */}
       {videoUri ? (
         <VideoView
@@ -811,7 +811,7 @@ export default function EditorScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
