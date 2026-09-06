@@ -783,38 +783,49 @@ export default function EditorScreen() {
               </View>
             )}
 
-            {/* timing: live readout + controls that visibly respond */}
+            {/* timing: two steppers, values live */}
             {sheetLine && (
-              <View style={styles.timingBlock}>
-                <Text style={styles.timingLabel}>
-                  {`מ-${formatTime(sheetLine.start)} עד ${formatTime(sheetLine.end)} · ${(sheetLine.end - sheetLine.start).toFixed(1)} שניות`}
-                </Text>
-                <View style={styles.sheetActions}>
-                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doNudge(-0.2)} accessibilityRole="button">
-                    <Text style={styles.sheetActionText}>מוקדם −0.2</Text>
-                  </Pressable>
-                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doNudge(0.2)} accessibilityRole="button">
-                    <Text style={styles.sheetActionText}>מאוחר +0.2</Text>
-                  </Pressable>
-                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doDuration(-0.2)} accessibilityRole="button">
-                    <Text style={styles.sheetActionText}>קצר −0.2</Text>
-                  </Pressable>
-                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doDuration(0.2)} accessibilityRole="button">
-                    <Text style={styles.sheetActionText}>ארוך +0.2</Text>
-                  </Pressable>
+              <View style={styles.steppers}>
+                <View style={styles.stepperRow}>
+                  <Text style={styles.stepperLabel}>התחלה</Text>
+                  <View style={styles.stepperControls}>
+                    <Pressable style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]} onPress={() => doNudge(-0.2)} accessibilityRole="button" accessibilityLabel="מוקדם יותר">
+                      <SymbolView name="minus" size={14} tintColor="#FFFFFF" />
+                    </Pressable>
+                    <Text style={styles.stepperValue}>{formatTime(sheetLine.start)}</Text>
+                    <Pressable style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]} onPress={() => doNudge(0.2)} accessibilityRole="button" accessibilityLabel="מאוחר יותר">
+                      <SymbolView name="plus" size={14} tintColor="#FFFFFF" />
+                    </Pressable>
+                  </View>
+                </View>
+                <View style={styles.stepperRow}>
+                  <Text style={styles.stepperLabel}>משך</Text>
+                  <View style={styles.stepperControls}>
+                    <Pressable style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]} onPress={() => doDuration(-0.2)} accessibilityRole="button" accessibilityLabel="קצר יותר">
+                      <SymbolView name="minus" size={14} tintColor="#FFFFFF" />
+                    </Pressable>
+                    <Text style={styles.stepperValue}>{`${(sheetLine.end - sheetLine.start).toFixed(1)} ש׳`}</Text>
+                    <Pressable style={({ pressed }) => [styles.stepBtn, pressed && styles.stepBtnPressed]} onPress={() => doDuration(0.2)} accessibilityRole="button" accessibilityLabel="ארוך יותר">
+                      <SymbolView name="plus" size={14} tintColor="#FFFFFF" />
+                    </Pressable>
+                  </View>
                 </View>
               </View>
             )}
 
-            <View style={styles.sheetActions}>
-              <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={doSplit} accessibilityRole="button">
-                <Text style={styles.sheetActionText}>פיצול</Text>
+            {/* line actions: three equal buttons */}
+            <View style={styles.lineActions}>
+              <Pressable style={({ pressed }) => [styles.lineAction, pressed && styles.stepBtnPressed]} onPress={doSplit} accessibilityRole="button">
+                <SymbolView name="scissors" size={15} tintColor="#FFFFFF" />
+                <Text style={styles.lineActionText}>פיצול</Text>
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={doMerge} accessibilityRole="button">
-                <Text style={styles.sheetActionText}>איחוד עם הבאה</Text>
+              <Pressable style={({ pressed }) => [styles.lineAction, pressed && styles.stepBtnPressed]} onPress={doMerge} accessibilityRole="button">
+                <SymbolView name="arrow.triangle.merge" size={15} tintColor="#FFFFFF" />
+                <Text style={styles.lineActionText}>איחוד</Text>
               </Pressable>
-              <Pressable style={({ pressed }) => [styles.sheetAction, styles.sheetActionDanger, pressed && styles.sheetActionPressed]} onPress={doDelete} accessibilityRole="button">
-                <Text style={[styles.sheetActionText, styles.sheetActionDangerText]}>מחיקה</Text>
+              <Pressable style={({ pressed }) => [styles.lineAction, styles.lineActionDanger, pressed && styles.stepBtnPressed]} onPress={doDelete} accessibilityRole="button">
+                <SymbolView name="trash" size={15} tintColor="#FF6B6B" />
+                <Text style={[styles.lineActionText, styles.lineActionDangerText]}>מחיקה</Text>
               </Pressable>
             </View>
 
@@ -825,7 +836,7 @@ export default function EditorScreen() {
             >
               <Text style={styles.sheetSaveText}>שמירה</Text>
             </Pressable>
-            <Text style={styles.sheetHint}>הקשה על מילה מדגישה אותה · הקשה מחוץ לחלון מבטלת</Text>
+            <Text style={styles.sheetHint}>הקשה על מילה מדגישה אותה</Text>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
@@ -871,7 +882,7 @@ const styles = StyleSheet.create({
   roundButtonPlaceholder: { width: 44, height: 44 },
   roundButtonDisabled: { opacity: 0.35 },
   topActions: { flexDirection: 'row-reverse', gap: 8 },
-  wordChips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start' },
+  wordChips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start', marginBottom: 2 },
   wordChipWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   wordChip: {
     paddingHorizontal: 12,
@@ -889,9 +900,35 @@ const styles = StyleSheet.create({
   sheetAction: { paddingHorizontal: 12, height: 36, borderRadius: 999, backgroundColor: '#1E1E24', justifyContent: 'center' },
   sheetActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: fonts.medium },
   sheetActionDanger: { backgroundColor: 'rgba(255,77,77,0.14)' },
-  sheetActionPressed: { opacity: 0.55, transform: [{ scale: 0.97 }] },
-  timingBlock: { gap: 8 },
-  timingLabel: { color: colors.accent, fontSize: 13, fontFamily: fonts.bold, textAlign: 'right' },
+  steppers: { gap: 8 },
+  stepperRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    height: 52,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    backgroundColor: '#1A1A1F',
+  },
+  stepperLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontFamily: fonts.medium },
+  stepperControls: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  stepperValue: { color: '#FFFFFF', fontSize: 16, fontFamily: fonts.bold, minWidth: 64, textAlign: 'center', fontVariant: ['tabular-nums'] },
+  stepBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' },
+  stepBtnPressed: { opacity: 0.5, transform: [{ scale: 0.95 }] },
+  lineActions: { flexDirection: 'row-reverse', gap: 8 },
+  lineAction: {
+    flex: 1,
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#1A1A1F',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  lineActionText: { color: '#FFFFFF', fontSize: 14, fontFamily: fonts.medium },
+  lineActionDanger: { backgroundColor: 'rgba(255,77,77,0.12)' },
+  lineActionDangerText: { color: '#FF6B6B' },
   sheetActionDangerText: { color: '#FF6B6B' },
   titleChip: {
     borderRadius: 999,
