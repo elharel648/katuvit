@@ -142,14 +142,17 @@ export default function EditorScreen() {
   };
 
   const captionGesture = useMemo(() => {
-    const pad = 24;
+    const pad = 8;
     const pan = Gesture.Pan()
       .onStart(() => {
         dragStart.value = { x: cx.value, y: cy.value };
       })
       .onUpdate((e) => {
-        cx.value = Math.min(Math.max(dragStart.value.x + e.translationX, rect.x + pad), rect.x + rect.w - pad);
-        cy.value = Math.min(Math.max(dragStart.value.y + e.translationY, rect.y + pad), rect.y + rect.h - pad);
+        // keep the whole caption inside the frame (what leaves the frame would be clipped in the burn)
+        const halfW = Math.min(chipW.value / 2, rect.w / 2 - pad);
+        const halfH = Math.min(chipH.value / 2, rect.h / 2 - pad);
+        cx.value = Math.min(Math.max(dragStart.value.x + e.translationX, rect.x + halfW), rect.x + rect.w - halfW);
+        cy.value = Math.min(Math.max(dragStart.value.y + e.translationY, rect.y + halfH), rect.y + rect.h - halfH);
       })
       .onEnd(() => {
         const fx = (cx.value - rect.x) / rect.w;
