@@ -59,7 +59,7 @@ function CustomTabBar({ state, navigation }: any) {
       </BlurView>
 
       {/* floating create button — sibling of the bar so nothing clips it */}
-      <View pointerEvents="box-none" style={[styles.createLayer, { bottom: (insets.bottom || 12) + 30 }]}>
+      <View pointerEvents="box-none" style={[styles.createLayer, { bottom: (insets.bottom || 12) + 36 }]}>
         <Pressable
           onPress={() => startCreateFlow()}
           style={styles.createHit}
@@ -104,7 +104,7 @@ function TabItem({
     <Pressable style={styles.tabItem} onPress={onPress} hitSlop={8}>
       <SymbolView
         name={icon as never}
-        size={23}
+        size={27}
         tintColor={active ? colors.accent : colors.textFaint}
       />
       <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>
@@ -150,8 +150,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    height: 68,
-    borderRadius: 34,
+    height: 74,
+    borderRadius: 37,
     paddingHorizontal: 30,
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
@@ -161,21 +161,21 @@ const styles = StyleSheet.create({
   tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    width: 64,
+    gap: 4,
+    width: 72,
   },
   tabLabel: {
     color: colors.textFaint,
-    fontSize: 11,
+    fontSize: 13,
     fontFamily: fonts.medium,
   },
   tabLabelActive: { color: colors.accent, fontFamily: fonts.bold },
   activeDot: {
     position: 'absolute',
-    bottom: -8,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
+    bottom: -9,
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: colors.accent,
   },
   createWrap: { width: 76 },
