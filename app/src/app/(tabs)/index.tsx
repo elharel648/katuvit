@@ -230,7 +230,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
+  screen: { flex: 1, backgroundColor: colors.bg, paddingBottom: 96 },
   header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',

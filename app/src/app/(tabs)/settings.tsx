@@ -164,7 +164,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.lg },
+  scroll: { padding: spacing.md, gap: spacing.sm, paddingBottom: 120 },
   title: {
     color: colors.text,
     fontSize: 26,
