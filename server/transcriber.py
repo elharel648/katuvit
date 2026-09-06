@@ -160,7 +160,7 @@ class Transcriber:
                         int(req.get("font_size", 88)),
                     )
                 )
-            out = os.path.join(td, "out.mp4")
+            out = f"/media/{req['media_id']}_out.mp4"
             width = 720 if req.get("quality") == "720p" else 1080
             subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-i", src,
@@ -169,9 +169,23 @@ class Transcriber:
                  "-c:a", "aac", "-b:a", "128k", out],
                 check=True,
             )
-            with open(out, "rb") as f:
-                data = f.read()
-        return Response(content=data, media_type="video/mp4")
+            media.commit()
+        return {"result_id": req["media_id"], "size": os.path.getsize(out)}
+
+    @modal.fastapi_endpoint(method="GET")
+    def download(self, id: str, key: str):
+        """GET ?id=<result_id>&key=<api key> -> the burned MP4 (streams from volume)"""
+        import os
+
+        from fastapi.responses import FileResponse
+
+        if key != os.environ["KATUVIT_API_KEY"]:
+            return {"error": "unauthorized"}
+        media.reload()
+        path = f"/media/{id}_out.mp4"
+        if not os.path.exists(path):
+            return {"error": "not_found"}
+        return FileResponse(path, media_type="video/mp4", filename="katuvit.mp4")
 
     @modal.fastapi_endpoint(method="POST")
     def transcribe(self, req: dict):

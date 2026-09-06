@@ -3,11 +3,15 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
+import * as MediaLibrary from 'expo-media-library';
+import * as Sharing from 'expo-sharing';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -19,8 +23,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
+import { burnAndDownload } from '@/lib/api';
 import { splitIntoLines } from '@/lib/captions';
 import { getSession } from '@/lib/session';
+import { CAPTION_SIZE_FONT, getSettings } from '@/lib/settings';
 import { TEMPLATES } from '@/lib/templates';
 import { colors, fonts } from '@/lib/theme';
 import type { CaptionLine, CaptionTemplate, TranscriptSegment } from '@/lib/types';
@@ -58,6 +64,8 @@ export default function EditorScreen() {
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string>(initialLines[0]?.id);
   const [editingLine, setEditingLine] = useState<CaptionLine | null>(null);
+  const [exportPhase, setExportPhase] = useState<'idle' | 'burning' | 'done'>('idle');
+  const [exportedUri, setExportedUri] = useState<string | null>(null);
 
   const pillScrollRef = useRef<ScrollView>(null);
 
@@ -92,6 +100,35 @@ export default function EditorScreen() {
     player.currentTime = line.start;
     setActiveLineId(line.id);
     if (!player.playing) player.play();
+  };
+
+  const exportVideo = async () => {
+    if (!session) {
+      Alert.alert('מצב דמו', 'בדמו אין ייצוא — העלו סרטון אמיתי עם כפתור הפלוס');
+      return;
+    }
+    const perm = await MediaLibrary.requestPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert('נדרשת הרשאה', 'כדי לשמור לגלריה, אשרו גישה לתמונות בהגדרות');
+      return;
+    }
+    setExportPhase('burning');
+    try {
+      const settings = getSettings();
+      const uri = await burnAndDownload({
+        mediaId: session.mediaId,
+        template: templateId,
+        lines: lines.map((l) => ({ start: l.start, end: l.end, text: l.text })),
+        quality: settings.exportQuality,
+        fontSize: CAPTION_SIZE_FONT[settings.captionSize],
+      });
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setExportedUri(uri);
+      setExportPhase('done');
+    } catch (e) {
+      setExportPhase('idle');
+      Alert.alert('הייצוא נכשל', e instanceof Error ? e.message : 'נסו שוב');
+    }
   };
 
   const saveEdit = (text: string) => {
@@ -246,10 +283,51 @@ export default function EditorScreen() {
         </ScrollView>
 
         {/* single floating action */}
-        <Pressable style={styles.export} disabled>
-          <Text style={styles.exportText}>ייצוא הסרטון</Text>
+        <Pressable
+          style={[styles.export, exportPhase === 'burning' && styles.exportBusy]}
+          onPress={exportVideo}
+          disabled={exportPhase === 'burning'}
+        >
+          {exportPhase === 'burning' ? (
+            <View style={styles.exportBusyRow}>
+              <ActivityIndicator color="#0A0A0A" />
+              <Text style={styles.exportText}>צורב כתוביות…</Text>
+            </View>
+          ) : (
+            <Text style={styles.exportText}>ייצוא הסרטון</Text>
+          )}
         </Pressable>
       </SafeAreaView>
+
+      {/* export success */}
+      <Modal
+        visible={exportPhase === 'done'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportPhase('idle')}
+      >
+        <View style={styles.successBackdrop}>
+          <View style={styles.successCard}>
+            <Text style={styles.successEmoji}>🎬</Text>
+            <Text style={styles.successTitle}>הסרטון בגלריה!</Text>
+            <Text style={styles.successSub}>
+              עם הכתוביות צרובות, מוכן להעלאה
+            </Text>
+            <Pressable
+              style={styles.successShare}
+              onPress={() => exportedUri && Sharing.shareAsync(exportedUri)}
+            >
+              <Text style={styles.successShareText}>שיתוף</Text>
+            </Pressable>
+            <Pressable
+              style={styles.successClose}
+              onPress={() => setExportPhase('idle')}
+            >
+              <Text style={styles.successCloseText}>סיום</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       {/* edit sheet */}
       <Modal
@@ -406,7 +484,51 @@ const styles = StyleSheet.create({
     height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    opacity: 0.55,
+  },
+  exportBusy: { opacity: 0.75 },
+  exportBusyRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  successBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  successCard: {
+    backgroundColor: '#131829',
+    borderRadius: 28,
+    padding: 28,
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'stretch',
+  },
+  successEmoji: { fontSize: 44 },
+  successTitle: { color: '#FFFFFF', fontSize: 22, fontFamily: fonts.bold },
+  successSub: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 14,
+    fontFamily: fonts.regular,
+    marginBottom: 12,
+  },
+  successShare: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successShareText: { color: colors.onAccent, fontSize: 16, fontFamily: fonts.bold },
+  successClose: {
+    alignSelf: 'stretch',
+    height: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successCloseText: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 15,
+    fontFamily: fonts.medium,
   },
   exportText: { color: '#0A0A0A', fontSize: 16, fontFamily: fonts.bold },
   sheetBackdrop: {

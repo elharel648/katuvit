@@ -34,6 +34,7 @@ export async function startCreateFlow() {
       videoUri: asset.uri,
       segments: result.segments,
       duration: result.duration,
+      mediaId: result.media_id,
     });
     router.push('/editor');
   } catch (e) {

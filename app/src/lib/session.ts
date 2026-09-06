@@ -8,6 +8,7 @@ interface EditingSession {
   videoUri: string;
   segments: TranscriptSegment[];
   duration: number;
+  mediaId: string;
 }
 
 let current: EditingSession | null = null;

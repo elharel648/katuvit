@@ -57,15 +57,6 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="projects"
-        options={{
-          title: 'הסרטונים שלי',
-          tabBarIcon: ({ color }) => (
-            <SymbolView name="film.stack" size={22} tintColor={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
         name="settings"
         options={{
           title: 'הגדרות',

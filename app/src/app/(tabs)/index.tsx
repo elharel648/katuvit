@@ -158,6 +158,12 @@ export default function HomeScreen() {
               </View>
             </View>
             <Text style={styles.specimenStyleName}>סגנון · {template.name}</Text>
+            <Pressable
+              style={styles.demoLink}
+              onPress={() => router.push('/editor')}
+            >
+              <Text style={styles.demoLinkText}>אין סרטון ביד? נסו את הדמו</Text>
+            </Pressable>
           </View>
         </View>
       )}
@@ -275,6 +281,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     textShadowRadius: 10,
     textShadowOffset: { width: 0, height: 2 },
+  },
+  demoLink: {
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  demoLinkText: {
+    color: colors.textDim,
+    fontSize: 13,
+    fontFamily: fonts.medium,
   },
   specimenStyleName: {
     color: colors.textFaint,
