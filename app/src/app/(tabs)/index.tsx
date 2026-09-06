@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
+import { Avatar3D } from '@/components/Avatar3D';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
 
 /** the product demos itself: one specimen line, cycling through real styles */
@@ -140,14 +141,11 @@ export default function HomeScreen() {
                 end={{ x: 1, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              {/* abstract creator avatar */}
+              {/* 3D-style creator avatar */}
               <View style={styles.avatarGlow}>
-                <LinearGradient
-                  colors={['#FFD52E', '#FF9E2E']}
-                  style={styles.avatarInner}
-                >
-                  <SymbolView name="person.fill" size={30} tintColor="#1A1830" />
-                </LinearGradient>
+                <View style={styles.avatarRing}>
+                  <Avatar3D size={104} />
+                </View>
               </View>
 
               {/* audio waveform — the core: voice becomes captions */}
@@ -351,12 +349,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInner: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+  avatarRing: {
+    width: 116,
+    height: 116,
+    borderRadius: 58,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
   },
   waveRow: {
     position: 'absolute',
