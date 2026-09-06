@@ -26,6 +26,14 @@ echo "▸ artifact registry"
 gcloud artifacts repositories describe "$REPO" --location="$REGION" >/dev/null 2>&1 || \
   gcloud artifacts repositories create "$REPO" --repository-format=docker --location="$REGION" >/dev/null
 
+echo "▸ build service account (compute default) + roles"
+gcloud services enable compute.googleapis.com >/dev/null
+PN="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+CSA="$PN-compute@developer.gserviceaccount.com"
+for r in roles/cloudbuild.builds.builder roles/artifactregistry.writer roles/logging.logWriter roles/storage.objectViewer; do
+  gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$CSA" --role="$r" --condition=None >/dev/null
+done
+
 echo "▸ service account + roles"
 gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 || \
   gcloud iam service-accounts create "$SA_NAME" --display-name="Katuvit worker" >/dev/null
@@ -41,14 +49,19 @@ else
 fi
 gcloud secrets add-iam-policy-binding katuvit-api-key --member="serviceAccount:$SA" --role=roles/secretmanager.secretAccessor >/dev/null
 
-echo "▸ building image (Cloud Build, ~10-15 min first time)"
-gcloud builds submit "$HERE/.." --config="$HERE/../cloudbuild.yaml" --substitutions=_IMAGE="$IMAGE" --region="$REGION"
+if [ "${SKIP_BUILD:-0}" = "1" ]; then
+  echo "▸ SKIP_BUILD=1 — reusing $IMAGE"
+else
+  echo "▸ building image (Cloud Build, ~10-15 min first time)"
+  # global builds: regional Cloud Build needs extra setup on a fresh project
+  gcloud builds submit "$HERE/.." --config="$HERE/../cloudbuild.yaml" --substitutions=_IMAGE="$IMAGE"
+fi
 
 echo "▸ deploying $SERVICE (L4 GPU)"
 gcloud run deploy "$SERVICE" \
   --image="$IMAGE" --region="$REGION" --platform=managed \
   --gpu=1 --gpu-type=nvidia-l4 --no-gpu-zonal-redundancy \
-  --cpu=4 --memory=16Gi --concurrency=1 --min-instances=0 --max-instances=3 \
+  --cpu=4 --memory=16Gi --concurrency=1 --min-instances=0 --max-instances=1 \
   --timeout=900 --no-cpu-throttling --allow-unauthenticated \
   --service-account="$SA" \
   --set-env-vars="MEDIA_BUCKET=$BUCKET" \
