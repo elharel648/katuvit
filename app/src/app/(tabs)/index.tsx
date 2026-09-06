@@ -153,7 +153,7 @@ export default function HomeScreen() {
           <View style={styles.showcaseZone}>
             <View style={styles.reelCard}>
               <LinearGradient
-                colors={['#1C1C20', '#0C0C0E']}
+                colors={['#262629', '#0E0E10']}
                 start={{ x: 0.5, y: 0 }}
                 end={{ x: 0.5, y: 1 }}
                 style={StyleSheet.absoluteFill}
@@ -200,7 +200,7 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, paddingBottom: 96 },
+  screen: { flex: 1, backgroundColor: colors.bg, paddingBottom: 124 },
   header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
