@@ -163,7 +163,7 @@ def _load_user(uid: str) -> dict:
     return fresh
 
 
-def _consume_in_transaction(uid: str, kind: str) -> dict:
+def _consume_in_transaction(uid: str, kind: str) -> tuple[dict, str]:
     """Re-check and consume atomically so two parallel uploads can't both pass."""
     transaction = db().transaction()
     ref = _user_ref(uid)
@@ -177,7 +177,7 @@ def _consume_in_transaction(uid: str, kind: str) -> dict:
             raise AuthError("quota_exceeded", 402)
         updated = consume(user, k)
         tx.set(ref, updated, merge=True)
-        return updated
+        return updated, k
 
     return run(transaction)
 
@@ -315,12 +315,12 @@ def transcribe(body: dict = Body(...), authorization: str | None = Header(defaul
         ]
     # success → pay for it atomically and remember who owns this media (and whether it's free-tier)
     try:
-        updated = _consume_in_transaction(uid, _kind)
+        updated, paid_with = _consume_in_transaction(uid, _kind)
     except AuthError as e:
         return _err(e.code, e.status)
     db().collection("media").document(media_id).set({
-        "uid": uid, "created_at": time.time(), "paid_with": _kind,
-        "watermark": _kind == "free", "duration": round(meta.duration, 1),
+        "uid": uid, "created_at": time.time(), "paid_with": paid_with,
+        "watermark": paid_with == "free", "duration": round(meta.duration, 1),
     })
     return {"segments": out, "duration": round(meta.duration, 1), "media_id": media_id,
             "entitlements": _entitlements(updated)}
