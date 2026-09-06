@@ -43,6 +43,7 @@ from captions import (
     normalize_lines,
     probe_video,
     quota_decision,
+    strip_fillers,
     style_options,
     video_filter,
 )
@@ -313,6 +314,7 @@ def transcribe(body: dict = Body(...), authorization: str | None = Header(defaul
             }
             for seg in segments
         ]
+    out = strip_fillers(out)
     # success → pay for it atomically and remember who owns this media (and whether it's free-tier)
     try:
         updated, paid_with = _consume_in_transaction(uid, _kind)

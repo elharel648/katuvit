@@ -61,6 +61,22 @@ DEFAULT_FONT = "rubik"
 POSITIONS = {"bottom": (2, 480), "center": (5, 0), "top": (8, 320)}
 DEFAULT_POSITION = "bottom"
 
+# vocalisations only (never real words like "כאילו" — the editor offers those as a one-tap cleanup)
+FILLER_WORDS = {"אה", "אהה", "אההה", "אמ", "אממ", "אמממ", "המ", "הממ", "אמם", "uh", "um", "umm", "hmm", "mm", "erm", "ah", "eh"}
+
+
+def strip_fillers(segments: list) -> list:
+    """Drop filler vocalisations from transcript segments (words + rebuilt text)."""
+    import re as _re
+    out = []
+    for seg in segments:
+        words = [w for w in seg.get("words", []) if _re.sub(r"[^\w]", "", str(w.get("w", "")).strip().lower()) not in FILLER_WORDS]
+        if not words:
+            continue
+        out.append({**seg, "words": words, "text": " ".join(w["w"].strip() for w in words)})
+    return out
+
+
 # what the spoken word does when it becomes active
 ANIMATIONS = {"none", "pop"}
 DEFAULT_ANIMATION = "none"
@@ -119,7 +135,7 @@ def even_words(text: str, start: float, end: float) -> list:
     if not parts:
         return []
     step = (end - start) / len(parts)
-    return [{"w": w, "s": start + i * step, "e": start + (i + 1) * step} for i, w in enumerate(parts)]
+    return [{"w": w, "s": start + i * step, "e": start + (i + 1) * step, "em": False} for i, w in enumerate(parts)]
 
 
 def normalize_words(raw, text: str, start: float, end: float) -> list:
@@ -141,7 +157,7 @@ def normalize_words(raw, text: str, start: float, end: float) -> list:
             return even_words(text, start, end)
         if not w:
             continue
-        words.append({"w": w, "s": min(max(ws, start), end), "e": min(max(we, start), end)})
+        words.append({"w": w, "s": min(max(ws, start), end), "e": min(max(we, start), end), "em": bool(item.get("em"))})
     if not words or " ".join(x["w"] for x in words) != text:
         return even_words(text, start, end)
     return words
@@ -191,7 +207,9 @@ def _events_for_line(line: dict, tpl: dict, accent: str = ACCENTS[DEFAULT_ACCENT
     """(start, end, text-with-overrides) events for one caption line."""
     words = line["words"]
     if tpl["mode"] == "static" or len(words) <= 1:
-        return [(line["start"], line["end"], line["text"])]
+        em_open = "{\\c" + accent + "&}"
+        text = " ".join((em_open + x["w"] + "{\\r}") if x.get("em") else x["w"] for x in words) if words else line["text"]
+        return [(line["start"], line["end"], text)]
 
     if tpl["mode"] == "fill":
         # one event per line; \kf sweeps the fill colour through each word for its duration (centiseconds)
@@ -204,6 +222,15 @@ def _events_for_line(line: dict, tpl: dict, accent: str = ACCENTS[DEFAULT_ACCENT
 
     active_open = _active_tags(tpl, accent, animation)
     reset = "{\\r}"
+    em_open = "{\\c" + accent + "&}"
+
+    def render(x: dict, is_active: bool) -> str:
+        if is_active:
+            return active_open + x["w"] + reset
+        if x.get("em"):
+            return em_open + x["w"] + reset
+        return x["w"]
+
     events = []
     for i, w in enumerate(words):
         seg_start = max(line["start"], w["s"]) if i else line["start"]
@@ -211,12 +238,9 @@ def _events_for_line(line: dict, tpl: dict, accent: str = ACCENTS[DEFAULT_ACCENT
         if seg_end <= seg_start:
             continue
         if tpl["mode"] == "reveal":
-            text = " ".join(x["w"] for x in words[: i + 1])
+            text = " ".join(render(x, False) for x in words[: i + 1])
         else:
-            text = " ".join(
-                (active_open + x["w"] + reset) if j == i else x["w"]
-                for j, x in enumerate(words)
-            )
+            text = " ".join(render(x, j == i) for j, x in enumerate(words))
         events.append((seg_start, seg_end, text))
     return events
 

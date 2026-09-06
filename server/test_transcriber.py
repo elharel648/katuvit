@@ -25,6 +25,7 @@ from captions import (  # noqa: E402
     consume,
     ACCENTS,
     style_options,
+    strip_fillers,
     quota_decision,
     FREE_LIFETIME_VIDEOS,
     PRO_MONTHLY_VIDEOS,
@@ -241,6 +242,30 @@ def test_looks_render_their_signature_tags():
     assert "\\t(0,110,\\fscx114\\fscy114)" in pop
     # center position ignores the vertical margin
     assert ",5,70,70,0,177" in build_ass(lines, "bold", 100, position="center")
+
+
+def test_strip_fillers_drops_vocalisations_only():
+    segs = [{"start": 0, "end": 3, "text": "אה שלום אממ חברים", "words": [
+        {"w": " אה", "s": 0, "e": 0.3}, {"w": " שלום", "s": 0.3, "e": 1}, {"w": " אממ,", "s": 1, "e": 1.4}, {"w": " חברים", "s": 1.4, "e": 3}]},
+        {"start": 3, "end": 4, "text": "um", "words": [{"w": " um", "s": 3, "e": 4}]}]
+    out = strip_fillers(segs)
+    assert len(out) == 1 and out[0]["text"] == "שלום חברים"
+    assert [w["w"].strip() for w in out[0]["words"]] == ["שלום", "חברים"]
+    # real words that merely resemble fillers survive
+    keep = strip_fillers([{"start": 0, "end": 1, "text": "כאילו אמא", "words": [{"w": "כאילו", "s": 0, "e": .5}, {"w": "אמא", "s": .5, "e": 1}]}])
+    assert keep[0]["text"] == "כאילו אמא"
+
+
+def test_emphasised_words_are_always_accent_coloured():
+    line = normalize_lines([{"start": 0, "end": 3, "text": "טוב חברים יש", "words": [
+        {"w": "טוב", "s": 0, "e": 1}, {"w": "חברים", "s": 1, "e": 2, "em": True}, {"w": "יש", "s": 2, "e": 3}]}])[0]
+    assert line["words"][1]["em"] is True and line["words"][0]["em"] is False
+    ev = _events_for_line(line, TEMPLATES["bold"], ACCENTS["pink"], "none")
+    # while "טוב" is active, "חברים" is still pink (emphasis), "יש" plain
+    assert ev[0][2] == "{\\c" + ACCENTS["pink"] + "&}טוב{\\r} {\\c" + ACCENTS["pink"] + "&}חברים{\\r} יש"
+    # static look shows emphasis too
+    st = _events_for_line(line, TEMPLATES["classic"], ACCENTS["pink"], "none")
+    assert st == [(0.0, 3.0, "טוב {\\c" + ACCENTS["pink"] + "&}חברים{\\r} יש")]
 
 
 def test_media_id_regex():

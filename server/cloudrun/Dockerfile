@@ -2,7 +2,7 @@
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1 HF_HOME=/models
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 python3-pip ffmpeg fonts-noto-core fontconfig curl ca-certificates \
+      python3 python3-pip ffmpeg fonts-noto-core fonts-noto-color-emoji fonts-symbola fontconfig curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 # Hebrew display fonts (Google Fonts, OFL) — family names: Rubik, Heebo, Secular One
 RUN mkdir -p /usr/share/fonts/truetype/katuvit && cd /usr/share/fonts/truetype/katuvit \
