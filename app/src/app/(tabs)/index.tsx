@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { useCreatePhase } from '@/lib/create-flow';
+import { startCreateFlow, useCreatePhase } from '@/lib/create-flow';
 import { quotaLabel, useEntitlements } from '@/lib/entitlements';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
@@ -141,17 +141,16 @@ export default function HomeScreen() {
         </Pressable>
       ) : (
         <View style={styles.emptyHero}>
-          {/* one message, real spoken Hebrew */}
-          <View style={styles.headlineBlock}>
-            <Text style={styles.headline}>תדברו.{'\n'}אנחנו נכתוב.</Text>
-            <Text style={styles.subline}>
-              כתוביות מדויקות לכל סרטון. עברית ואנגלית באותה נשימה.
-            </Text>
-          </View>
+          <Text style={styles.sectionTitle}>הסרטונים שלך</Text>
 
-          {/* one visual: the reel card, straight and quiet */}
+          {/* the first tile is always "new video": tap it, and the live demo runs inside it */}
           <View style={styles.showcaseZone}>
-            <View style={styles.reelCard}>
+            <Pressable
+              style={styles.reelCard}
+              onPress={() => startCreateFlow()}
+              accessibilityRole="button"
+              accessibilityLabel="סרטון חדש"
+            >
               <LinearGradient
                 colors={['#262629', '#0E0E10']}
                 start={{ x: 0.5, y: 0 }}
@@ -190,7 +189,12 @@ export default function HomeScreen() {
                   ))}
                 </View>
               </View>
-            </View>
+
+              <View style={styles.newBadge}>
+                <SymbolView name="plus" size={13} tintColor={colors.onAccent} />
+                <Text style={styles.newBadgeText}>סרטון חדש</Text>
+              </View>
+            </Pressable>
           </View>
         </View>
       )}
@@ -301,38 +305,36 @@ const styles = StyleSheet.create({
   },
   emptyHero: {
     flex: 1,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
-  headlineBlock: {
-    gap: spacing.sm,
-    alignItems: 'flex-end',
-  },
-  headline: {
+  sectionTitle: {
     color: colors.text,
-    fontSize: 34,
-    lineHeight: 40,
-    fontFamily: fonts.black,
+    fontSize: 22,
+    fontFamily: fonts.bold,
     textAlign: 'right',
+    marginBottom: 2,
   },
-  subline: {
-    color: colors.textDim,
-    fontSize: 15,
-    lineHeight: 22,
-    fontFamily: fonts.regular,
-    textAlign: 'right',
-    maxWidth: 300,
+  newBadge: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    height: 32,
   },
+  newBadgeText: { color: colors.onAccent, fontSize: 13, fontFamily: fonts.bold },
   showcaseZone: {
-    flex: 1,
-    paddingTop: 28,
-    paddingBottom: 8,
+    paddingTop: 14,
   },
   reelCard: {
     alignSelf: 'stretch',
-    flex: 1,
-    minHeight: 220,
-    borderRadius: 28,
+    height: 250,
+    borderRadius: 24,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
