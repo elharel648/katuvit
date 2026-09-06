@@ -57,6 +57,8 @@ export async function startCreateFlow() {
       duration: result.duration,
       mediaId: result.media_id,
     });
+    // a previous editor may still be open (user picked again from inside it)
+    if (router.canDismiss()) router.dismissAll();
     router.push('/editor');
   } catch (e) {
     Alert.alert('משהו השתבש', e instanceof Error ? e.message : 'נסו שוב');

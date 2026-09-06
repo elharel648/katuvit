@@ -26,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
 import { burnAndDownload } from '@/lib/api';
-import { previewWords, retimeWords, splitIntoLines } from '@/lib/captions';
+import { isRtlText, previewWords, retimeWords, splitIntoLines } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { CAPTION_SIZE_FONT, getSettings } from '@/lib/settings';
 import { TEMPLATES } from '@/lib/templates';
@@ -263,7 +263,12 @@ export default function EditorScreen() {
         >
           {activeLine && (
             <View style={capStyle.chip}>
-              <View style={styles.captionWords}>
+              <View
+                style={[
+                  styles.captionWords,
+                  { flexDirection: isRtlText(activeLine.text) ? 'row-reverse' : 'row' },
+                ]}
+              >
                 {previewWords(activeLine, activeTemplate, currentTime).map((w, i) => (
                   <Text
                     key={`${activeLine.id}-${i}`}
@@ -541,7 +546,6 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   captionWords: {
-    flexDirection: 'row-reverse',
     flexWrap: 'wrap',
     justifyContent: 'center',
     alignItems: 'baseline',

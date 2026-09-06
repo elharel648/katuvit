@@ -89,6 +89,15 @@ export function previewWords(
   }
 }
 
+/**
+ * Base direction of a caption line: the first strong (letter) character decides.
+ * Hebrew/Arabic → RTL; an English line is LTR and its words must not be reversed.
+ */
+export function isRtlText(text: string): boolean {
+  const m = text.match(/[\p{L}]/u);
+  return m ? /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.test(m[0]) : true;
+}
+
 export function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
