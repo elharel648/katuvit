@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useState } from 'react';
+import Animated from 'react-native-reanimated';
 import {
   ActivityIndicator,
   Alert,
@@ -29,6 +30,18 @@ const SPECIMEN_LINES = [
   'גם כשעוברים באמצע ל-English',
   'כל מילה. מדויק. על המסך.',
 ];
+
+/** karaoke: each word pops in sequence, like live captions */
+const wordIn = {
+  '0%': { opacity: 0, transform: [{ translateY: 14 }, { scale: 0.9 }] },
+  '100%': { opacity: 1, transform: [{ translateY: 0 }, { scale: 1 }] },
+};
+
+const breathe = {
+  '0%': { transform: [{ scale: 1 }] },
+  '50%': { transform: [{ scale: 1.045 }] },
+  '100%': { transform: [{ scale: 1 }] },
+};
 
 export default function HomeScreen() {
   const [phase, setPhase] = useState<Phase>('idle');
@@ -139,6 +152,14 @@ export default function HomeScreen() {
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.specimenZone}>
+            <View style={[styles.ghostChip, styles.ghostChipTop]}>
+              <Text style={styles.ghostChipText}>וזה נראה ככה</Text>
+            </View>
+            <View style={[styles.ghostChip, styles.ghostChipBottom]}>
+              <Text style={[styles.ghostChipText, styles.ghostChipTextYellow]}>
+                או ככה
+              </Text>
+            </View>
             <View
               style={[
                 styles.specimenChip,
@@ -147,26 +168,33 @@ export default function HomeScreen() {
                 },
               ]}
             >
-              <Text
-                style={[
-                  styles.specimenText,
-                  {
-                    color: template.textColor,
-                    textShadowColor: template.backgroundColor
-                      ? 'transparent'
-                      : template.outlineColor,
-                  },
-                ]}
-              >
-                {line}
-              </Text>
+              <View style={styles.wordsRow}>
+                {line.split(' ').map((w, i) => (
+                  <Animated.Text
+                    key={`${specimenIdx}-${i}`}
+                    style={[
+                      styles.specimenText,
+                      {
+                        color: template.textColor,
+                        textShadowColor: template.backgroundColor
+                          ? 'transparent'
+                          : template.outlineColor,
+                      },
+                      {
+                        animationName: wordIn,
+                        animationDuration: '360ms',
+                        animationDelay: `${i * 150}ms`,
+                        animationFillMode: 'backwards',
+                        animationTimingFunction: 'ease-out',
+                      },
+                    ]}
+                  >
+                    {w}
+                  </Animated.Text>
+                ))}
+              </View>
             </View>
             <Text style={styles.specimenStyleName}>סגנון · {template.name}</Text>
-          </View>
-          <View style={styles.heroFootnoteWrap}>
-            <Text style={styles.heroFootnote}>
-              ככה ייראו הכתוביות על הסרטון שלך
-            </Text>
           </View>
         </View>
       )}
@@ -189,13 +217,23 @@ export default function HomeScreen() {
           onPress={pickAndTranscribe}
           disabled={phase === 'uploading'}
         >
-          <View style={styles.primaryCircle}>
+          <Animated.View
+            style={[
+              styles.primaryCircle,
+              {
+                animationName: breathe,
+                animationDuration: '2600ms',
+                animationIterationCount: 'infinite',
+                animationTimingFunction: 'ease-in-out',
+              },
+            ]}
+          >
             {phase === 'uploading' ? (
               <ActivityIndicator color={colors.onAccent} />
             ) : (
               <SymbolView name="plus" size={30} tintColor={colors.onAccent} />
             )}
-          </View>
+          </Animated.View>
           <Text style={[styles.actionLabel, styles.actionLabelPrimary]}>
             {phase === 'uploading' ? 'מתמלל…' : 'סרטון חדש'}
           </Text>
@@ -216,9 +254,6 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      <Text style={styles.footnote}>
-        עברית ואנגלית באותו משפט · הסרטון נמחק מהשרת עד 24 שעות
-      </Text>
     </SafeAreaView>
   );
 }
@@ -305,6 +340,36 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingHorizontal: spacing.lg,
   },
+  wordsRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    columnGap: 9,
+  },
+  ghostChip: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    opacity: 0.4,
+  },
+  ghostChipTop: {
+    top: '20%',
+    right: '12%',
+    transform: [{ rotate: '6deg' }],
+  },
+  ghostChipBottom: {
+    bottom: '18%',
+    left: '10%',
+    transform: [{ rotate: '-7deg' }],
+  },
+  ghostChipText: {
+    color: 'rgba(255,255,255,0.9)',
+    fontSize: 15,
+    fontFamily: fonts.bold,
+  },
+  ghostChipTextYellow: { color: colors.accent },
   specimenChip: {
     borderRadius: 12,
     paddingHorizontal: 16,
