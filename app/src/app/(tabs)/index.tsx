@@ -214,12 +214,6 @@ export default function HomeScreen() {
             </BlurView>
           </View>
 
-          <Pressable
-            style={styles.demoLink}
-            onPress={() => router.push('/editor')}
-          >
-            <Text style={styles.demoLinkText}>אין סרטון ביד? נסו את הדמו</Text>
-          </Pressable>
         </View>
       )}
 
