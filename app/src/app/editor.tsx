@@ -42,6 +42,8 @@ import {
   splitIntoLines,
   splitLine,
   suggestEmoji,
+  rechunk,
+  replaceWordEverywhere,
   toggleEmoji,
   toggleEmphasis,
 } from '@/lib/captions';
@@ -67,6 +69,12 @@ function captionStyleFor(t: CaptionTemplate) {
       textShadowOffset: { width: 0, height: 2 },
     },
   };
+}
+
+/** m:ss for the transport — tenths belong in the timing steppers, not on a player clock */
+function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
 
 export default function EditorScreen() {
@@ -196,7 +204,77 @@ export default function EditorScreen() {
     p.play();
   });
   useEvent(player, 'timeUpdate');
+  useEvent(player, 'playingChange');
+  useEvent(player, 'statusChange');
   const currentTime = player.currentTime;
+  const playing = player.playing;
+  const duration = Number.isFinite(player.duration) ? player.duration : 0;
+  const progress = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+
+  // --- transport: play/pause + a scrubber (tap or drag to seek) ---
+  const [scrubW, setScrubW] = useState(0);
+  const wasPlayingRef = useRef(false);
+  const togglePlay = () => (player.playing ? player.pause() : player.play());
+  const seekToX = (x: number) => {
+    const d = Number.isFinite(player.duration) ? player.duration : 0;
+    if (!d || !scrubW) return;
+    player.currentTime = Math.min(1, Math.max(0, x / scrubW)) * d;
+  };
+  const scrubBegin = () => {
+    wasPlayingRef.current = player.playing;
+    player.pause();
+  };
+  const scrubEnd = () => {
+    if (wasPlayingRef.current) player.play();
+  };
+  const scrubGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .onBegin((e) => {
+          runOnJS(scrubBegin)();
+          runOnJS(seekToX)(e.x);
+        })
+        .onUpdate((e) => {
+          runOnJS(seekToX)(e.x);
+        })
+        .onFinalize(() => {
+          runOnJS(scrubEnd)();
+        }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scrubW],
+  );
+
+  // how many words each caption holds (1 = one word at a time); re-chunks the whole transcript
+  const [wordsPerLine, setWordsPerLine] = useState(4);
+  const applyWordsPerLine = (n: number) => {
+    setWordsPerLine(n);
+    commit((prev) => rechunk(prev, n));
+  };
+
+  // long-press a word in the edit sheet → replace it everywhere in the video
+  const promptReplace = (word: string) => {
+    Alert.prompt(
+      'החלפה בכל הסרטון',
+      `כל מופע של "${word}" יוחלף`,
+      [
+        { text: 'ביטול', style: 'cancel' },
+        {
+          text: 'החלפה',
+          onPress: (to?: string) => {
+            if (!to?.trim()) return;
+            commit((prev) => replaceWordEverywhere(prev, word, to).lines);
+            if (editingLine) {
+              const current = lines.find((l) => l.id === editingLine.id);
+              if (current) setDraft(replaceWordEverywhere([current], word, to).lines[0].text);
+            }
+          },
+        },
+      ],
+      'plain-text',
+      word,
+    );
+  };
 
   // active line follows playback
   useEffect(() => {
@@ -526,6 +604,33 @@ export default function EditorScreen() {
           )}
         </View>
 
+        {/* transport: time always reads left→right, like every player */}
+        <View style={styles.transport}>
+          <Pressable
+            onPress={togglePlay}
+            hitSlop={10}
+            style={styles.playButton}
+            accessibilityRole="button"
+            accessibilityLabel={playing ? 'השהיה' : 'ניגון'}
+          >
+            <SymbolView name={playing ? 'pause.fill' : 'play.fill'} size={13} tintColor="#FFFFFF" />
+          </Pressable>
+          <Text style={styles.timeLabel}>{formatClock(currentTime)}</Text>
+          <GestureDetector gesture={scrubGesture}>
+            <View
+              style={styles.scrubHit}
+              onLayout={(e) => setScrubW(e.nativeEvent.layout.width)}
+              accessibilityRole="adjustable"
+              accessibilityLabel="ציר הזמן"
+            >
+              <View style={styles.scrubTrack} />
+              <View style={[styles.scrubFill, { width: progress * scrubW }]} />
+              <View style={[styles.scrubThumb, { left: Math.max(0, progress * scrubW - 6) }]} />
+            </View>
+          </GestureDetector>
+          <Text style={styles.timeLabel}>{formatClock(duration)}</Text>
+        </View>
+
         {/* line timeline */}
         <ScrollView
           ref={pillScrollRef}
@@ -671,17 +776,35 @@ export default function EditorScreen() {
           </View>
         )}
         {studioTab === 'size' && (
-          <View style={styles.optionRow}>
-            {(['small', 'medium', 'large'] as CaptionSize[]).map((o) => (
-              <Pressable
-                key={o}
-                onPress={() => setCaptionSize(o)}
-                style={[styles.optionChip, captionSize === o && styles.optionChipActive]}
-                accessibilityRole="button"
-              >
-                <Text style={[styles.optionChipText, captionSize === o && styles.optionChipTextActive]}>{CAPTION_SIZE_LABELS[o]}</Text>
-              </Pressable>
-            ))}
+          <View style={styles.sizeBlock}>
+            <View style={styles.optionRowTight}>
+              {(['small', 'medium', 'large'] as CaptionSize[]).map((o) => (
+                <Pressable
+                  key={o}
+                  onPress={() => setCaptionSize(o)}
+                  style={[styles.optionChip, captionSize === o && styles.optionChipActive]}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: captionSize === o }}
+                >
+                  <Text style={[styles.optionChipText, captionSize === o && styles.optionChipTextActive]}>{CAPTION_SIZE_LABELS[o]}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <View style={styles.optionRowTight}>
+              <Text style={styles.rowLabel}>מילים בשורה</Text>
+              {[1, 2, 3, 4].map((n) => (
+                <Pressable
+                  key={n}
+                  onPress={() => applyWordsPerLine(n)}
+                  style={[styles.optionChipSquare, wordsPerLine === n && styles.optionChipActive]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${n} מילים בשורה`}
+                  accessibilityState={{ selected: wordsPerLine === n }}
+                >
+                  <Text style={[styles.optionChipText, wordsPerLine === n && styles.optionChipTextActive]}>{n}</Text>
+                </Pressable>
+              ))}
+            </View>
           </View>
         )}
         {studioTab === 'motion' && (
@@ -877,9 +1000,11 @@ export default function EditorScreen() {
                     <View key={`${sheetLine.id}-${i}`} style={styles.wordChipWrap}>
                       <Pressable
                         onPress={() => commit((prev) => toggleEmphasis(prev, sheetLine.id, i))}
+                        onLongPress={() => promptReplace(w.w)}
+                        delayLongPress={350}
                         style={[styles.wordChip, w.em && { borderColor: accent }]}
                         accessibilityRole="button"
-                        accessibilityLabel={`הדגשה ${w.w}`}
+                        accessibilityLabel={`הדגשה ${w.w} · לחיצה ארוכה להחלפה בכל הסרטון`}
                       >
                         <Text style={[styles.wordChipText, w.em && { color: accent }]}>{w.w}</Text>
                       </Pressable>
@@ -956,7 +1081,7 @@ export default function EditorScreen() {
             >
               <Text style={styles.sheetSaveText}>שמירה</Text>
             </Pressable>
-            <Text style={styles.sheetHint}>הקשה על מילה מדגישה אותה</Text>
+            <Text style={styles.sheetHint}>הקשה על מילה מדגישה אותה · לחיצה ארוכה מחליפה אותה בכל הסרטון</Text>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
@@ -984,6 +1109,53 @@ const styles = StyleSheet.create({
   chrome: { flex: 1 },
   stage: { flex: 1, marginTop: 6, marginBottom: 10, overflow: 'hidden' },
   frame: { position: 'absolute', overflow: 'hidden', backgroundColor: '#000000' },
+  transport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    height: 30,
+    marginBottom: 6,
+  },
+  playButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timeLabel: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    fontFamily: fonts.medium,
+    fontVariant: ['tabular-nums'],
+    minWidth: 34,
+    textAlign: 'center',
+  },
+  scrubHit: { flex: 1, height: 30, justifyContent: 'center' },
+  scrubTrack: { height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.16)' },
+  scrubFill: { position: 'absolute', left: 0, height: 3, borderRadius: 1.5, backgroundColor: colors.accent },
+  scrubThumb: {
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFF',
+  },
+  sizeBlock: { justifyContent: 'center', gap: 10, paddingHorizontal: 16, minHeight: 113, marginBottom: 14 },
+  optionRowTight: { flexDirection: 'row-reverse', justifyContent: 'center', alignItems: 'center', gap: 8 },
+  rowLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 12.5, fontFamily: fonts.regular, marginLeft: 4 },
+  optionChipSquare: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(20,20,24,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
   frameCropped: { borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.28)' },
   formatBlock: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16, minHeight: 113, marginBottom: 14 },
   formatRow: { flexDirection: 'row-reverse', justifyContent: 'center', gap: 8 },

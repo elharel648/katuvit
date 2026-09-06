@@ -4,12 +4,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import {
   ActivityIndicator,
   Alert,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -53,6 +54,9 @@ const wavePulse = {
 export default function HomeScreen() {
   const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
+  // RTL slider: the first look sits at the far right, so open it scrolled to the end once
+  const looksRef = useRef<ScrollView>(null);
+  const looksOpened = useRef(false);
   const session = getSession();
   const create = useCreatePhase();
   const ent = useEntitlements();
@@ -85,7 +89,7 @@ export default function HomeScreen() {
         <Pressable onPress={() => router.push('/paywall')} accessibilityRole="button" accessibilityLabel="הסרטונים שלי">
           <BlurView intensity={30} tint="dark" style={styles.proPill}>
             <SymbolView name="crown.fill" size={13} tintColor={colors.accent} />
-            <Text style={styles.proPillText}>{quotaLabel(ent) ?? 'Pro'}</Text>
+            <Text style={styles.proPillText}>{quotaLabel(ent) ?? '…'}</Text>
           </BlurView>
         </Pressable>
       </View>
@@ -202,7 +206,20 @@ export default function HomeScreen() {
 
           {/* the look the next video starts with */}
           <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>סגנון הכתוביות</Text>
-          <View style={styles.looksRow}>
+          <ScrollView
+            ref={looksRef}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            decelerationRate="fast"
+            snapToOffsets={TEMPLATES.map((_, i) => i * (LOOK_TILE_W + LOOK_GAP))}
+            style={styles.looksScroll}
+            contentContainerStyle={styles.looksRow}
+            onContentSizeChange={() => {
+              if (looksOpened.current) return;
+              looksOpened.current = true;
+              looksRef.current?.scrollToEnd({ animated: false });
+            }}
+          >
             {TEMPLATES.map((t) => {
               const active = t.id === settings.defaultStyle.template;
               const accent = accentHex(settings.defaultStyle.accent);
@@ -246,13 +263,16 @@ export default function HomeScreen() {
                 </Pressable>
               );
             })}
-          </View>
+          </ScrollView>
         </View>
       )}
 
     </SafeAreaView>
   );
 }
+
+const LOOK_TILE_W = 92;
+const LOOK_GAP = 10;
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg, paddingBottom: 124 },
@@ -367,13 +387,15 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   sectionTitleSpaced: { marginTop: 26 },
+  // bleeds to the screen edges so tiles slide under the margin instead of being clipped by it
+  looksScroll: { marginHorizontal: -spacing.md, marginTop: 12, flexGrow: 0 },
   looksRow: {
     flexDirection: 'row-reverse',
-    justifyContent: 'space-between',
-    marginTop: 12,
+    gap: LOOK_GAP,
+    paddingHorizontal: spacing.md,
   },
   lookTile: {
-    width: '23%',
+    width: LOOK_TILE_W,
     alignItems: 'center',
     gap: 8,
     paddingVertical: 14,

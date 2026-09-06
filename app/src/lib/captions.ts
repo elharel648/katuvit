@@ -43,6 +43,63 @@ export function splitIntoLines(segments: TranscriptSegment[]): CaptionLine[] {
  * Word timings for an edited line. Same word count as before → keep the spoken
  * timings (typo fixes stay in sync); otherwise spread the new words evenly.
  */
+/**
+ * Re-chunk the whole transcript into lines of at most `maxWords` words (1 = one word at a time,
+ * the TikTok look). Works on the words, so text edits, emphasis, emoji and deletions all survive.
+ */
+export function rechunk(lines: CaptionLine[], maxWords: number): CaptionLine[] {
+  const words = lines.flatMap((l) => l.words);
+  const out: CaptionLine[] = [];
+  let current: Word[] = [];
+  const flush = () => {
+    if (!current.length) return;
+    out.push({
+      id: `line-${out.length}`,
+      start: current[0].s,
+      end: current[current.length - 1].e,
+      text: current.map((w) => w.w).join(' '),
+      words: current,
+      edited: false,
+    });
+    current = [];
+  };
+  for (const w of words) {
+    const spanExceeded = current.length > 0 && w.e - current[0].s > MAX_LINE_SPAN_SECONDS;
+    if (current.length >= Math.max(1, maxWords) || spanExceeded) flush();
+    current.push(w);
+  }
+  flush();
+  return out;
+}
+
+const EDGE_PUNCT = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+
+/** replace one word everywhere it appears (exact match; punctuation and emoji around it are kept) */
+export function replaceWordEverywhere(
+  lines: CaptionLine[],
+  from: string,
+  to: string,
+): { lines: CaptionLine[]; count: number } {
+  const core = (s: string) => s.replace(EDGE_PUNCT, '');
+  const target = core(from);
+  const replacement = to.trim();
+  if (!target || !replacement) return { lines, count: 0 };
+  let count = 0;
+  const next = lines.map((l) => {
+    let hit = false;
+    const words = l.words.map((w) => {
+      if (core(w.w) !== target) return w;
+      hit = true;
+      count++;
+      const lead = w.w.match(/^[^\p{L}\p{N}]*/u)?.[0] ?? '';
+      const trail = w.w.match(/[^\p{L}\p{N}]*$/u)?.[0] ?? '';
+      return { ...w, w: `${lead}${replacement}${trail}` };
+    });
+    return hit ? retext({ ...l, words, edited: true }) : l;
+  });
+  return { lines: next, count };
+}
+
 export function retimeWords(
   text: string,
   start: number,
