@@ -317,7 +317,11 @@ class Transcriber:
         return Response(content=data, media_type="video/mp4")
 
 
-@app.function(schedule=modal.Period(hours=1), volumes={"/media": media})
+# the module imports fastapi at top level, so every function in this file needs it
+cleanup_image = modal.Image.debian_slim(python_version="3.12").pip_install("fastapi[standard]")
+
+
+@app.function(image=cleanup_image, schedule=modal.Period(hours=1), volumes={"/media": media})
 def cleanup_media():
     """Delete uploaded media older than RETENTION_HOURS — backs the privacy policy."""
     import os, time
