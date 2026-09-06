@@ -26,11 +26,12 @@ import { TEMPLATES } from '@/lib/templates';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
 
 /** the product demos itself: one specimen line, cycling through real styles */
+// real mid-story speech, not copy: anything "about the app" reads like an ad here
 const SPECIMEN_LINES = [
-  'דיברתי. זה כתב.',
-  'שלושים שניות דיבור, אפס הקלדה',
-  'הכתוביות האלה? לא נגעתי בהן',
-  'עברית, מילה במילה, כמו שאמרתי אותה',
+  'אז אני עומד בסופר, ופתאום',
+  'רגע רגע רגע, תן לי לסיים',
+  'טוב, אתם לא תאמינו מה קרה לי היום',
+  'ואז היא אומרת לי, בשיא הרצינות',
 ];
 
 /** karaoke: each word pops in sequence, like live captions */
