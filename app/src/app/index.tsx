@@ -1,5 +1,9 @@
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { Link, router } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,30 +16,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { uploadAndTranscribe } from '@/lib/api';
-import { startSession } from '@/lib/session';
-import { colors, fonts, radius, spacing } from '@/lib/theme';
+import { getSession, startSession } from '@/lib/session';
+import { fonts } from '@/lib/theme';
 
 type Phase = 'idle' | 'uploading';
 
-/** rotating caption-style preview — shows the product before you use it */
-const PREVIEW_STYLES = [
-  { text: 'כתוביות שנראות ככה', color: '#FFFFFF', bg: 'transparent', outline: true },
-  { text: 'או ככה, עם רקע', color: '#FFFFFF', bg: '#000000CC', outline: false },
-  { text: 'גם בצהוב של ריל ויראלי', color: '#FFE23D', bg: 'transparent', outline: true },
-  { text: 'and even in English', color: '#FFFFFF', bg: '#7C5CFFCC', outline: false },
-];
-
 export default function HomeScreen() {
   const [phase, setPhase] = useState<Phase>('idle');
-  const [previewIdx, setPreviewIdx] = useState(0);
+  const [lastThumb, setLastThumb] = useState<string | null>(null);
+  const session = getSession();
 
   useEffect(() => {
-    const t = setInterval(
-      () => setPreviewIdx((i) => (i + 1) % PREVIEW_STYLES.length),
-      1800,
-    );
-    return () => clearInterval(t);
-  }, []);
+    if (!session?.videoUri) return;
+    VideoThumbnails.getThumbnailAsync(session.videoUri, { time: 800 })
+      .then((r) => setLastThumb(r.uri))
+      .catch(() => {});
+  }, [session?.videoUri]);
 
   const pickAndTranscribe = async () => {
     const picked = await ImagePicker.launchImageLibraryAsync({
@@ -61,32 +57,63 @@ export default function HomeScreen() {
     }
   };
 
-  const preview = PREVIEW_STYLES[previewIdx];
+  const firstLine = session?.segments?.[0]?.text ?? '';
 
   return (
     <SafeAreaView style={styles.screen}>
-      <View style={styles.hero}>
-        <Text style={styles.kicker}>עברית. מדויק. מהטלפון.</Text>
-        <Text style={styles.logo}>כתוביות</Text>
-        <Text style={styles.tagline}>
-          מעלים רילס — מקבלים כתוביות מושלמות{'\n'}גם כשעוברים באמצע ל-English
-        </Text>
-      </View>
-
-      <View style={styles.previewStage}>
-        <View
-          style={[
-            styles.previewChip,
-            { backgroundColor: preview.bg },
-            preview.outline && styles.previewOutline,
-          ]}
-        >
-          <Text style={[styles.previewText, { color: preview.color }]}>
-            {preview.text}
-          </Text>
+      {/* quiet header */}
+      <View style={styles.header}>
+        <Text style={styles.wordmark}>כתוביות</Text>
+        <View style={styles.avatar}>
+          <SymbolView
+            name="person"
+            size={17}
+            tintColor="rgba(255,255,255,0.7)"
+          />
         </View>
       </View>
 
+      {/* hero: the last result — or quiet type when there is none yet */}
+      <View style={styles.heroZone}>
+        {session && lastThumb ? (
+          <Pressable
+            style={styles.resultCard}
+            onPress={() => router.push('/editor')}
+          >
+            <Image
+              source={{ uri: lastThumb }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+            />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.7)']}
+              style={styles.cardScrim}
+            />
+            {firstLine !== '' && (
+              <Text style={styles.cardCaption}>{firstLine}</Text>
+            )}
+            <View style={styles.cardFooter}>
+              <Text style={styles.cardMeta}>
+                הסרטון האחרון · {Math.round(session.duration)} שניות
+              </Text>
+              <View style={styles.playButton}>
+                <SymbolView name="play.fill" size={15} tintColor="#0A0A0A" />
+              </View>
+            </View>
+          </Pressable>
+        ) : (
+          <View style={styles.emptyHero}>
+            <Text style={styles.heroTitle}>
+              כל מילה{'\n'}על המסך.
+            </Text>
+            <Text style={styles.heroSub}>
+              כתוביות עברית מדויקות לרילס שלך —{'\n'}גם כשעוברים באמצע ל-English.
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* one action */}
       <View style={styles.actions}>
         <Pressable
           style={({ pressed }) => [
@@ -99,91 +126,126 @@ export default function HomeScreen() {
         >
           {phase === 'uploading' ? (
             <View style={styles.busyRow}>
-              <ActivityIndicator color={colors.text} />
+              <ActivityIndicator color="#0A0A0A" />
               <Text style={styles.ctaText}>מעלה ומתמלל…</Text>
             </View>
           ) : (
-            <Text style={styles.ctaText}>בחר/י סרטון  →</Text>
+            <View style={styles.busyRow}>
+              <Text style={styles.ctaText}>סרטון חדש</Text>
+              <SymbolView name="plus" size={16} tintColor="#0A0A0A" />
+            </View>
           )}
         </Pressable>
-
-        <Link href="/editor" asChild>
-          <Pressable style={styles.ghostButton}>
-            <Text style={styles.ghostText}>הצצה לעורך עם סרטון דמו</Text>
-          </Pressable>
-        </Link>
+        <Text style={styles.footnote}>
+          עברית מדויקת · אנגלית באמצע משפט · ייצוא בלי ווטרמרק ב-Pro
+        </Text>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  hero: {
+  screen: { flex: 1, backgroundColor: '#000000' },
+  header: {
+    flexDirection: 'row-reverse',
     alignItems: 'center',
-    marginTop: spacing.xl * 2,
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
-  kicker: {
-    color: colors.accent,
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    letterSpacing: 1,
-  },
-  logo: { color: colors.text, fontFamily: fonts.black, fontSize: 56 },
-  tagline: {
-    color: colors.textDim,
-    fontFamily: fonts.regular,
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 26,
-    marginTop: spacing.xs,
-  },
-  previewStage: {
-    flex: 1,
+  wordmark: { color: '#FFFFFF', fontSize: 22, fontFamily: fonts.black },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#141418',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: spacing.lg,
   },
-  previewChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
+  heroZone: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
   },
-  previewOutline: { },
-  previewText: {
+  resultCard: {
+    height: 520,
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#101014',
+  },
+  cardScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+  },
+  cardCaption: {
+    position: 'absolute',
+    bottom: 74,
+    left: 16,
+    right: 16,
+    textAlign: 'center',
+    color: '#FFFFFF',
+    fontSize: 22,
     fontFamily: fonts.bold,
-    fontSize: 24,
-    textShadowColor: '#000000',
-    textShadowRadius: 6,
+    textShadowColor: 'rgba(0,0,0,0.9)',
+    textShadowRadius: 8,
     textShadowOffset: { width: 0, height: 2 },
   },
-  actions: {
-    padding: spacing.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
+  cardFooter: {
+    position: 'absolute',
+    bottom: 16,
+    left: 16,
+    right: 16,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
+  cardMeta: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 13,
+    fontFamily: fonts.medium,
+  },
+  playButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHero: { gap: 18, alignItems: 'flex-end' },
+  heroTitle: {
+    color: '#FFFFFF',
+    fontSize: 54,
+    lineHeight: 60,
+    fontFamily: fonts.black,
+    textAlign: 'right',
+  },
+  heroSub: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 16,
+    lineHeight: 26,
+    fontFamily: fonts.regular,
+    textAlign: 'right',
+  },
+  actions: { paddingHorizontal: 20, paddingBottom: 16, gap: 12 },
   cta: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.lg,
-    paddingVertical: 18,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    height: 56,
     alignItems: 'center',
-    shadowColor: colors.accent,
-    shadowOpacity: 0.45,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 6 },
+    justifyContent: 'center',
   },
-  ctaPressed: { backgroundColor: colors.accentPressed },
+  ctaPressed: { backgroundColor: '#E8E8EC' },
   ctaBusy: { opacity: 0.75 },
-  busyRow: { flexDirection: 'row-reverse', gap: 10, alignItems: 'center' },
-  ctaText: { color: colors.text, fontFamily: fonts.bold, fontSize: 17 },
-  ghostButton: {
-    borderRadius: radius.lg,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+  busyRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 10 },
+  ctaText: { color: '#0A0A0A', fontSize: 17, fontFamily: fonts.bold },
+  footnote: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 12,
+    fontFamily: fonts.regular,
+    textAlign: 'center',
   },
-  ghostText: { color: colors.textDim, fontFamily: fonts.medium, fontSize: 14 },
 });
