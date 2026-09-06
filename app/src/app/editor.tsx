@@ -23,7 +23,7 @@ import {
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
 import { burnAndDownload } from '@/lib/api';
@@ -102,6 +102,7 @@ export default function EditorScreen() {
   const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion' | 'size'>('look');
   const accent = accentHex(style.accent);
   const previewFont = fontFamily(style.font);
+  const insets = useSafeAreaInsets();
 
   // --- where the video actually is on screen (contain) so drag positions map 1:1 to the burn ---
   const [screen, setScreen] = useState({ w: 0, h: 0 });
@@ -335,35 +336,8 @@ export default function EditorScreen() {
   };
 
   return (
-    <GestureHandlerRootView style={styles.screen} onLayout={(e) => setScreen({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
-      {/* the video IS the interface */}
-      {videoUri ? (
-        <VideoView
-          player={player}
-          style={StyleSheet.absoluteFill}
-          contentFit="contain"
-          nativeControls={false}
-        />
-      ) : (
-        <LinearGradient
-          colors={['#1A2140', '#0E1220', '#0B0E17']}
-          start={{ x: 0.2, y: 0 }}
-          end={{ x: 0.8, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-      )}
-      <LinearGradient
-        colors={['rgba(0,0,0,0.55)', 'transparent']}
-        style={styles.topScrim}
-        pointerEvents="none"
-      />
-      <LinearGradient
-        colors={['transparent', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.75)']}
-        style={styles.bottomScrim}
-        pointerEvents="none"
-      />
-
-      <SafeAreaView style={styles.chrome} edges={['top', 'bottom']}>
+    <GestureHandlerRootView style={styles.screen}>
+      <View style={[styles.chrome, { paddingTop: insets.top, paddingBottom: Math.max(insets.bottom, 8) }]}>
         {/* floating top bar */}
         <View style={styles.topBar}>
           <Pressable
@@ -399,7 +373,75 @@ export default function EditorScreen() {
           </View>
         </View>
 
-        <View style={styles.flexSpacer} />
+        {/* the stage: the whole frame is visible, so every caption position is visible too */}
+        <View
+          style={styles.stage}
+          onLayout={(e) => setScreen({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}
+        >
+          {videoUri ? (
+            <VideoView
+              player={player}
+              style={StyleSheet.absoluteFill}
+              contentFit="contain"
+              nativeControls={false}
+            />
+          ) : (
+            <LinearGradient
+              colors={['#1A1A1E', '#0B0B0D']}
+              style={StyleSheet.absoluteFill}
+            />
+          )}
+          {/* the live caption: drag anywhere on the frame, tap to edit */}
+          {activeLine && rect.w > 0 && (
+            <GestureDetector gesture={captionGesture}>
+              <Reanimated.View
+                style={[styles.floatingCaption, captionAnimated]}
+                onLayout={(e) => {
+                  chipW.value = e.nativeEvent.layout.width;
+                  chipH.value = e.nativeEvent.layout.height;
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="עריכת הכתובית (אפשר לגרור)"
+              >
+                <View style={capStyle.chip}>
+                  <View
+                    style={[
+                      styles.captionWords,
+                      { flexDirection: isRtlText(activeLine.text) ? 'row-reverse' : 'row' },
+                    ]}
+                  >
+                    {previewWords(activeLine, activeTemplate, currentTime).map((w, i) => (
+                      <Text
+                        key={`${activeLine.id}-${i}`}
+                        style={[
+                          styles.captionText,
+                          capStyle.text,
+                          { fontFamily: previewFont },
+                          captionSize === 'small' && { fontSize: 22, lineHeight: 28 },
+                          captionSize === 'large' && { fontSize: 30, lineHeight: 36 },
+                          activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
+                          !w.active && activeLine.words[i]?.em && { color: accent },
+                          w.active && activeTemplate.mode !== 'boxword' && { color: accent },
+                          w.active && activeTemplate.mode === 'boxword' && {
+                            color: '#000000',
+                            backgroundColor: accent,
+                            borderRadius: 6,
+                            paddingHorizontal: 6,
+                          },
+                          w.active && {
+                            transform: [{ scale: style.animation === 'pop' ? 1.12 : activeTemplate.activeScale }],
+                          },
+                        ]}
+                      >
+                        {w.text}
+                      </Text>
+                    ))}
+                  </View>
+                </View>
+              </Reanimated.View>
+            </GestureDetector>
+          )}
+        </View>
 
         {/* line timeline */}
         <ScrollView
@@ -416,7 +458,8 @@ export default function EditorScreen() {
             return (
               <Pressable
                 key={line.id}
-                onPress={() => seekTo(line)}
+                onPress={() => (active ? openEdit(line) : seekTo(line))}
+                onLongPress={() => openEdit(line)}
                 onLayout={(e) => {
                   const { x, width } = e.nativeEvent.layout;
                   pillLayout.current[line.id] = { x, w: width };
@@ -435,6 +478,7 @@ export default function EditorScreen() {
                   >
                     {line.text}
                   </Text>
+                  {active && <SymbolView name="pencil" size={12} tintColor={colors.onAccent} />}
                   {line.edited && <View style={styles.editedDot} />}
                 </BlurView>
               </Pressable>
@@ -625,58 +669,7 @@ export default function EditorScreen() {
             <Text style={styles.exportText}>ייצוא הסרטון</Text>
           )}
         </Pressable>
-      </SafeAreaView>
-
-      {/* the live caption: drag anywhere on the frame, tap to edit */}
-      {activeLine && rect.w > 0 && (
-        <GestureDetector gesture={captionGesture}>
-          <Reanimated.View
-            style={[styles.floatingCaption, captionAnimated]}
-            onLayout={(e) => {
-              chipW.value = e.nativeEvent.layout.width;
-              chipH.value = e.nativeEvent.layout.height;
-            }}
-            accessibilityRole="button"
-            accessibilityLabel="עריכת הכתובית (אפשר לגרור)"
-          >
-            <View style={capStyle.chip}>
-              <View
-                style={[
-                  styles.captionWords,
-                  { flexDirection: isRtlText(activeLine.text) ? 'row-reverse' : 'row' },
-                ]}
-              >
-                {previewWords(activeLine, activeTemplate, currentTime).map((w, i) => (
-                  <Text
-                    key={`${activeLine.id}-${i}`}
-                    style={[
-                      styles.captionText,
-                      capStyle.text,
-                      { fontFamily: previewFont },
-                      captionSize === 'small' && { fontSize: 22, lineHeight: 28 },
-                      captionSize === 'large' && { fontSize: 30, lineHeight: 36 },
-                      activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
-                      !w.active && activeLine.words[i]?.em && { color: accent },
-                      w.active && activeTemplate.mode !== 'boxword' && { color: accent },
-                      w.active && activeTemplate.mode === 'boxword' && {
-                        color: '#000000',
-                        backgroundColor: accent,
-                        borderRadius: 6,
-                        paddingHorizontal: 6,
-                      },
-                      w.active && {
-                        transform: [{ scale: style.animation === 'pop' ? 1.12 : activeTemplate.activeScale }],
-                      },
-                    ]}
-                  >
-                    {w.text}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          </Reanimated.View>
-        </GestureDetector>
-      )}
+      </View>
 
       {/* export success */}
       <Modal
@@ -833,6 +826,7 @@ const styles = StyleSheet.create({
     height: 380,
   },
   chrome: { flex: 1 },
+  stage: { flex: 1, marginTop: 6, marginBottom: 10, overflow: 'hidden' },
   topBar: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
