@@ -68,6 +68,7 @@ export default function EditorScreen() {
   const [editingLine, setEditingLine] = useState<CaptionLine | null>(null);
   const [exportPhase, setExportPhase] = useState<'idle' | 'burning' | 'done'>('idle');
   const [exportedUri, setExportedUri] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
 
   const pillScrollRef = useRef<ScrollView>(null);
   // RTL timeline: with row-reverse the FIRST line sits at the far right, but a
@@ -134,6 +135,7 @@ export default function EditorScreen() {
       return;
     }
     setExportPhase('burning');
+    setDownloadProgress(0);
     try {
       const settings = getSettings();
       const uri = await burnAndDownload({
@@ -142,7 +144,7 @@ export default function EditorScreen() {
         lines: lines.map((l) => ({ start: l.start, end: l.end, text: l.text, words: l.words })),
         quality: settings.exportQuality,
         fontSize: CAPTION_SIZE_FONT[settings.captionSize],
-      });
+      }, setDownloadProgress);
       // video is ready locally — success now; saving to Photos is a follow-up action
       setExportedUri(uri);
       setExportPhase('done');
@@ -397,7 +399,11 @@ export default function EditorScreen() {
           {exportPhase === 'burning' ? (
             <View style={styles.exportBusyRow}>
               <ActivityIndicator color="#0A0A0A" />
-              <Text style={styles.exportText}>צורב כתוביות…</Text>
+              <Text style={styles.exportText}>
+                {downloadProgress > 0
+                  ? `מוריד… ${Math.round(downloadProgress * 100)}%`
+                  : 'צורב כתוביות…'}
+              </Text>
             </View>
           ) : (
             <Text style={styles.exportText}>ייצוא הסרטון</Text>

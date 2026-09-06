@@ -1,13 +1,13 @@
 """
 Unit tests for the pure helpers in transcriber.py (no GPU / no Modal calls).
-Run:  ~/.local/share/uv/tools/modal/bin/python server/test_transcriber.py
+Run:  python3 server/test_transcriber.py  (engine lives in captions.py; no cloud SDK needed)
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from transcriber import (  # noqa: E402
+from captions import (  # noqa: E402
     FONT_MAX,
     FONT_MIN,
     MAX_LINES,
