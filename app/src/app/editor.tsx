@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -164,9 +165,16 @@ export default function EditorScreen() {
     }
   };
 
+  // pause while editing so the active line doesn't run away under the sheet
   const openEdit = (line: CaptionLine) => {
+    player.pause();
     setDraft(line.text);
     setEditingLine(line);
+  };
+
+  const closeEdit = () => {
+    setEditingLine(null);
+    if (videoUri) player.play();
   };
 
   const saveEdit = (raw: string) => {
@@ -180,7 +188,7 @@ export default function EditorScreen() {
         ),
       );
     }
-    setEditingLine(null);
+    closeEdit();
   };
 
   return (
@@ -409,12 +417,13 @@ export default function EditorScreen() {
         visible={editingLine !== null}
         transparent
         animationType="fade"
-        onRequestClose={() => setEditingLine(null)}
+        onRequestClose={closeEdit}
       >
-        <Pressable
-          style={styles.sheetBackdrop}
-          onPress={() => setEditingLine(null)}
-        >
+        <KeyboardAvoidingView behavior="padding" style={styles.sheetBackdrop}>
+          <Pressable
+            style={styles.sheetBackdropTap}
+            onPress={closeEdit}
+          />
           <Pressable style={styles.sheet} onPress={() => {}}>
             <Text style={styles.sheetTitle}>תיקון שורה</Text>
             <TextInput
@@ -438,7 +447,7 @@ export default function EditorScreen() {
             </Pressable>
             <Text style={styles.sheetHint}>הקשה מחוץ לחלון מבטלת</Text>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -636,6 +645,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
+  sheetBackdropTap: { flex: 1 },
   sheet: {
     backgroundColor: '#141418',
     borderTopLeftRadius: 24,
