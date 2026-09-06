@@ -107,11 +107,6 @@ export default function EditorScreen() {
       Alert.alert('מצב דמו', 'בדמו אין ייצוא — העלו סרטון אמיתי עם כפתור הפלוס');
       return;
     }
-    const perm = await MediaLibrary.requestPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('נדרשת הרשאה', 'כדי לשמור לגלריה, אשרו גישה לתמונות בהגדרות');
-      return;
-    }
     setExportPhase('burning');
     try {
       const settings = getSettings();
@@ -122,12 +117,25 @@ export default function EditorScreen() {
         quality: settings.exportQuality,
         fontSize: CAPTION_SIZE_FONT[settings.captionSize],
       });
-      await MediaLibrary.saveToLibraryAsync(uri);
+      // video is ready locally — success now; saving to Photos is a follow-up action
       setExportedUri(uri);
       setExportPhase('done');
+      saveToPhotos(uri); // fire-and-forget; never blocks the success screen
     } catch (e) {
       setExportPhase('idle');
       Alert.alert('הייצוא נכשל', e instanceof Error ? e.message : 'נסו שוב');
+    }
+  };
+
+  const [savedToPhotos, setSavedToPhotos] = useState(false);
+  const saveToPhotos = async (uri: string) => {
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (!perm.granted) return;
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setSavedToPhotos(true);
+    } catch {
+      // simulator / permission quirks — user can still share from the success sheet
     }
   };
 
@@ -311,7 +319,9 @@ export default function EditorScreen() {
             <Text style={styles.successEmoji}>🎬</Text>
             <Text style={styles.successTitle}>הסרטון בגלריה!</Text>
             <Text style={styles.successSub}>
-              עם הכתוביות צרובות, מוכן להעלאה
+              {savedToPhotos
+                ? 'נשמר לגלריה · עם הכתוביות צרובות'
+                : 'מוכן · עם הכתוביות צרובות'}
             </Text>
             <Pressable
               style={styles.successShare}
@@ -319,9 +329,20 @@ export default function EditorScreen() {
             >
               <Text style={styles.successShareText}>שיתוף</Text>
             </Pressable>
+            {!savedToPhotos && (
+              <Pressable
+                style={styles.successSecondary}
+                onPress={() => exportedUri && saveToPhotos(exportedUri)}
+              >
+                <Text style={styles.successSecondaryText}>שמירה לגלריה</Text>
+              </Pressable>
+            )}
             <Pressable
               style={styles.successClose}
-              onPress={() => setExportPhase('idle')}
+              onPress={() => {
+                setSavedToPhotos(false);
+                setExportPhase('idle');
+              }}
             >
               <Text style={styles.successCloseText}>סיום</Text>
             </Pressable>
@@ -519,6 +540,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   successShareText: { color: colors.onAccent, fontSize: 16, fontFamily: fonts.bold },
+  successSecondary: {
+    alignSelf: 'stretch',
+    height: 48,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  successSecondaryText: {
+    color: colors.text,
+    fontSize: 15,
+    fontFamily: fonts.medium,
+  },
   successClose: {
     alignSelf: 'stretch',
     height: 46,
