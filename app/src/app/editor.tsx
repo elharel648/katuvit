@@ -5,6 +5,7 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Image } from 'expo-image';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Modal,
@@ -114,7 +115,12 @@ export default function EditorScreen() {
           nativeControls={false}
         />
       ) : (
-        <View style={[StyleSheet.absoluteFill, styles.demoBackdrop]} />
+        <LinearGradient
+          colors={['#1A2140', '#0E1220', '#0B0E17']}
+          start={{ x: 0.2, y: 0 }}
+          end={{ x: 0.8, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
       )}
       <LinearGradient
         colors={['rgba(0,0,0,0.55)', 'transparent']}
@@ -130,14 +136,20 @@ export default function EditorScreen() {
       <SafeAreaView style={styles.chrome} edges={['top', 'bottom']}>
         {/* floating top bar */}
         <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={() => router.back()} hitSlop={10}>
             <BlurView intensity={40} tint="dark" style={styles.roundButton}>
-              <Text style={styles.backGlyph}>‹</Text>
+              <SymbolView
+                name="chevron.forward"
+                size={17}
+                tintColor="#FFFFFF"
+              />
             </BlurView>
           </Pressable>
-          <Text style={styles.topTitle}>
-            {session ? 'הסרטון שלך' : 'סרטון דמו'}
-          </Text>
+          <BlurView intensity={25} tint="dark" style={styles.titleChip}>
+            <Text style={styles.topTitle}>
+              {session ? 'הסרטון שלך' : 'מצב דמו'}
+            </Text>
+          </BlurView>
           <View style={styles.roundButtonPlaceholder} />
         </View>
 
@@ -305,12 +317,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20,20,24,0.35)',
   },
   roundButtonPlaceholder: { width: 44, height: 44 },
-  backGlyph: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    fontFamily: fonts.regular,
-    transform: [{ scaleX: -1 }],
-    marginTop: -3,
+  titleChip: {
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   topTitle: {
     color: 'rgba(255,255,255,0.85)',
