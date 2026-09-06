@@ -1,14 +1,16 @@
 /** Katuvit design language — dark studio, one warm accent, Hebrew-first type */
 export const colors = {
-  bg: '#0B0B0F',
-  surface: '#15151C',
-  surfaceRaised: '#1D1D26',
-  border: '#262633',
+  bg: '#0A0A0C',
+  surface: '#16161A',
+  surfaceRaised: '#1F1F24',
+  border: '#26262C',
   text: '#F5F5F7',
-  textDim: '#9C9CA8',
-  textFaint: '#5E5E6A',
-  accent: '#7C5CFF',
-  accentPressed: '#6A4BE8',
+  textDim: '#9C9CA4',
+  textFaint: '#5E5E66',
+  // caption-yellow: the one color the whole world associates with subtitles
+  accent: '#FFD52E',
+  accentPressed: '#E8BF1E',
+  onAccent: '#141408',
   success: '#4ADE80',
 };
 

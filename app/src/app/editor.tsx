@@ -21,7 +21,7 @@ import demoTranscript from '@/fixtures/transcript-demo.json';
 import { splitIntoLines } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
-import { fonts } from '@/lib/theme';
+import { colors, fonts } from '@/lib/theme';
 import type { CaptionLine, CaptionTemplate, TranscriptSegment } from '@/lib/types';
 
 /** how the active caption is painted on the video, per template */
@@ -343,13 +343,13 @@ const styles = StyleSheet.create({
     gap: 6,
     maxWidth: 200,
   },
-  pillActive: { backgroundColor: '#7C5CFF' },
+  pillActive: { backgroundColor: colors.accent },
   pillText: {
     color: 'rgba(255,255,255,0.65)',
     fontSize: 13,
     fontFamily: fonts.medium,
   },
-  pillTextActive: { color: '#FFFFFF', fontFamily: fonts.bold },
+  pillTextActive: { color: colors.onAccent, fontFamily: fonts.bold },
   editedDot: {
     width: 5,
     height: 5,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
   },
   styleCardActive: {
     borderWidth: 2,
-    borderColor: '#9B82FF',
+    borderColor: colors.accent,
   },
   styleCardCaption: {
     position: 'absolute',
