@@ -23,7 +23,7 @@ ASS_STYLES = {
 }
 
 
-def build_ass(lines: list, template: str) -> str:
+def build_ass(lines: list, template: str, font_size: int = 88) -> str:
     vals = ASS_STYLES.get(template, ASS_STYLES["classic"])
     primary, secondary, outline_c, back, bold, border_style, outline_w, shadow = (
         vals.split(",")
@@ -41,7 +41,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,Noto Sans Hebrew,88,{primary},{secondary},{outline_c},{back},{bold},0,0,0,100,100,0,0,{border_style},{outline_w},{shadow},2,60,60,340,177
+Style: Cap,Noto Sans Hebrew,{font_size},{primary},{secondary},{outline_c},{back},{bold},0,0,0,100,100,0,0,{border_style},{outline_w},{shadow},2,60,60,340,177
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -153,11 +153,18 @@ class Transcriber:
         with tempfile.TemporaryDirectory() as td:
             ass_path = os.path.join(td, "captions.ass")
             with open(ass_path, "w", encoding="utf-8") as f:
-                f.write(build_ass(req["lines"], req.get("template", "classic")))
+                f.write(
+                    build_ass(
+                        req["lines"],
+                        req.get("template", "classic"),
+                        int(req.get("font_size", 88)),
+                    )
+                )
             out = os.path.join(td, "out.mp4")
+            width = 720 if req.get("quality") == "720p" else 1080
             subprocess.run(
                 ["ffmpeg", "-y", "-v", "error", "-i", src,
-                 "-vf", f"scale=1080:-2,subtitles={ass_path}",
+                 "-vf", f"scale={width}:-2,subtitles={ass_path}",
                  "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
                  "-c:a", "aac", "-b:a", "128k", out],
                 check=True,

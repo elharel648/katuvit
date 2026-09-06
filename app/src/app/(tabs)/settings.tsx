@@ -1,8 +1,34 @@
 import { SymbolView } from 'expo-symbols';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useState } from 'react';
+import {
+  Alert,
+  Linking,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  CAPTION_SIZE_LABELS,
+  updateSettings,
+  useSettings,
+} from '@/lib/settings';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
+
+// TODO(harel): החלף למספר הוואטסאפ העסקי שלך
+const WHATSAPP_NUMBER = '';
+
+const PRIVACY_TEXT = `מדיניות פרטיות — כתוביות (גרסת פיתוח)
+
+• הסרטון שאת/ה מעלה נשלח לשרת שלנו לצורך תמלול וצריבת כתוביות בלבד.
+• הקובץ נמחק מהשרת אוטומטית עד 24 שעות מההעלאה.
+• התמלול מעובד על ידי מודל בינה מלאכותית שרץ על תשתית הענן שלנו (Modal). איננו מוכרים או משתפים את התוכן שלך עם אף גורם.
+• באפליקציה אין חשבון אישי בשלב זה; מזהה אנונימי משמש למניין השימוש בלבד.
+• לכל שאלה או בקשת מחיקה: דברו איתנו דרך מסך ההגדרות.`;
 
 function Row({
   symbol,
@@ -30,25 +56,52 @@ function Row({
 }
 
 export default function SettingsScreen() {
-  const soon = () => Alert.alert('בקרוב', 'האפשרות הזו נפתחת בגרסה הקרובה');
+  const settings = useSettings();
+  const [showPrivacy, setShowPrivacy] = useState(false);
+
+  const pickQuality = () =>
+    Alert.alert('איכות ייצוא', 'באיזו רזולוציה לייצא את הסרטונים?', [
+      { text: '1080p (מומלץ)', onPress: () => updateSettings({ exportQuality: '1080p' }) },
+      { text: '720p (קובץ קטן יותר)', onPress: () => updateSettings({ exportQuality: '720p' }) },
+      { text: 'ביטול', style: 'cancel' },
+    ]);
+
+  const pickCaptionSize = () =>
+    Alert.alert('גודל כתוביות', 'גודל ברירת המחדל לצריבה:', [
+      { text: 'קטן', onPress: () => updateSettings({ captionSize: 'small' }) },
+      { text: 'בינוני (מומלץ)', onPress: () => updateSettings({ captionSize: 'medium' }) },
+      { text: 'גדול', onPress: () => updateSettings({ captionSize: 'large' }) },
+      { text: 'ביטול', style: 'cancel' },
+    ]);
+
+  const openWhatsApp = () => {
+    if (!WHATSAPP_NUMBER) {
+      Alert.alert('עוד רגע', 'קו הוואטסאפ ייפתח עם ההשקה');
+      return;
+    }
+    Linking.openURL(`https://wa.me/${WHATSAPP_NUMBER}`);
+  };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>הגדרות</Text>
 
-        <Text style={styles.sectionHeader}>חשבון</Text>
-        <View style={styles.group}>
-          <Row symbol="crown.fill" label="שדרוג ל-Pro" value="בקרוב" onPress={soon} />
-          <View style={styles.divider} />
-          <Row symbol="arrow.counterclockwise" label="שחזור רכישות" onPress={soon} />
-        </View>
-
         <Text style={styles.sectionHeader}>ייצוא</Text>
         <View style={styles.group}>
-          <Row symbol="4k.tv" label="איכות ייצוא" value="1080p" onPress={soon} />
+          <Row
+            symbol="4k.tv"
+            label="איכות ייצוא"
+            value={settings.exportQuality}
+            onPress={pickQuality}
+          />
           <View style={styles.divider} />
-          <Row symbol="textformat" label="גודל כתוביות ברירת מחדל" value="בינוני" onPress={soon} />
+          <Row
+            symbol="textformat"
+            label="גודל כתוביות ברירת מחדל"
+            value={CAPTION_SIZE_LABELS[settings.captionSize]}
+            onPress={pickCaptionSize}
+          />
         </View>
 
         <Text style={styles.sectionHeader}>פרטיות</Text>
@@ -59,18 +112,52 @@ export default function SettingsScreen() {
             value="נמחקים עד 24 שעות"
           />
           <View style={styles.divider} />
-          <Row symbol="hand.raised.fill" label="מדיניות פרטיות" onPress={soon} />
+          <Row
+            symbol="hand.raised.fill"
+            label="מדיניות פרטיות"
+            onPress={() => setShowPrivacy(true)}
+          />
+        </View>
+
+        <Text style={styles.sectionHeader}>חשבון</Text>
+        <View style={styles.group}>
+          <Row
+            symbol="crown.fill"
+            label="שדרוג ל-Pro"
+            value="נפתח בהשקה"
+          />
         </View>
 
         <Text style={styles.sectionHeader}>עזרה</Text>
         <View style={styles.group}>
-          <Row symbol="bubble.left.fill" label="דברו איתנו בוואטסאפ" onPress={soon} />
-          <View style={styles.divider} />
-          <Row symbol="star.fill" label="דרגו אותנו" onPress={soon} />
+          <Row
+            symbol="bubble.left.fill"
+            label="דברו איתנו בוואטסאפ"
+            onPress={openWhatsApp}
+          />
         </View>
 
         <Text style={styles.version}>כתוביות · גרסה 0.1 (פיתוח)</Text>
       </ScrollView>
+
+      <Modal
+        visible={showPrivacy}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPrivacy(false)}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={() => setShowPrivacy(false)}>
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Text style={styles.sheetTitle}>מדיניות פרטיות</Text>
+            <ScrollView style={styles.sheetScroll}>
+              <Text style={styles.sheetBody}>{PRIVACY_TEXT}</Text>
+            </ScrollView>
+            <Pressable style={styles.sheetClose} onPress={() => setShowPrivacy(false)}>
+              <Text style={styles.sheetCloseText}>סגירה</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -133,4 +220,39 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.md,
   },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.lg,
+    maxHeight: '75%',
+    gap: spacing.md,
+  },
+  sheetTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontFamily: fonts.bold,
+    textAlign: 'right',
+  },
+  sheetScroll: { flexGrow: 0 },
+  sheetBody: {
+    color: colors.textDim,
+    fontSize: 14,
+    lineHeight: 24,
+    fontFamily: fonts.regular,
+    textAlign: 'right',
+  },
+  sheetClose: {
+    backgroundColor: colors.surfaceRaised,
+    borderRadius: 999,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetCloseText: { color: colors.text, fontSize: 15, fontFamily: fonts.bold },
 });

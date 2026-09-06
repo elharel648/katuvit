@@ -152,14 +152,6 @@ export default function HomeScreen() {
             style={StyleSheet.absoluteFill}
           />
           <View style={styles.specimenZone}>
-            <View style={[styles.ghostChip, styles.ghostChipTop]}>
-              <Text style={styles.ghostChipText}>וזה נראה ככה</Text>
-            </View>
-            <View style={[styles.ghostChip, styles.ghostChipBottom]}>
-              <Text style={[styles.ghostChipText, styles.ghostChipTextYellow]}>
-                או ככה
-              </Text>
-            </View>
             <View
               style={[
                 styles.specimenChip,
@@ -346,14 +338,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     columnGap: 9,
   },
-  ghostChip: {
-    position: 'absolute',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    opacity: 0.4,
-  },
   ghostChipTop: {
     top: '20%',
     right: '12%',
@@ -364,12 +348,6 @@ const styles = StyleSheet.create({
     left: '10%',
     transform: [{ rotate: '-7deg' }],
   },
-  ghostChipText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 15,
-    fontFamily: fonts.bold,
-  },
-  ghostChipTextYellow: { color: colors.accent },
   specimenChip: {
     borderRadius: 12,
     paddingHorizontal: 16,
