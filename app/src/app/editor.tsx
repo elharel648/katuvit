@@ -18,6 +18,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -68,6 +69,17 @@ export default function EditorScreen() {
   const [exportedUri, setExportedUri] = useState<string | null>(null);
 
   const pillScrollRef = useRef<ScrollView>(null);
+  // RTL timeline: with row-reverse the FIRST line sits at the far right, but a
+  // horizontal ScrollView opens at x=0 (the far left = the END of the transcript).
+  const pillLayout = useRef<Record<string, { x: number; w: number }>>({});
+  const [pillsViewportW, setPillsViewportW] = useState(0);
+  const [pillsContentW, setPillsContentW] = useState(0);
+  const didInitialScroll = useRef(false);
+  const [draft, setDraft] = useState('');
+
+  const { width: windowW } = useWindowDimensions();
+  const styleCardW = Math.floor((windowW - 32 - 8 * (TEMPLATES.length - 1)) / TEMPLATES.length);
+  const styleCardH = Math.round(styleCardW * 1.32);
 
   const player = useVideoPlayer(videoUri, (p) => {
     p.loop = true;
@@ -84,6 +96,19 @@ export default function EditorScreen() {
       null;
     if (active && active.id !== activeLineId) setActiveLineId(active.id);
   }, [currentTime, lines, activeLineId]);
+
+  useEffect(() => {
+    if (didInitialScroll.current || !pillsViewportW || pillsContentW <= pillsViewportW) return;
+    didInitialScroll.current = true;
+    pillScrollRef.current?.scrollToEnd({ animated: false });
+  }, [pillsContentW, pillsViewportW]);
+
+  useEffect(() => {
+    const m = activeLineId ? pillLayout.current[activeLineId] : undefined;
+    if (!m || !pillsViewportW) return;
+    const x = Math.max(0, m.x - (pillsViewportW - m.w) / 2);
+    pillScrollRef.current?.scrollTo({ x, animated: true });
+  }, [activeLineId, pillsViewportW]);
 
   useEffect(() => {
     if (!videoUri) return;
@@ -139,13 +164,22 @@ export default function EditorScreen() {
     }
   };
 
-  const saveEdit = (text: string) => {
+  const openEdit = (line: CaptionLine) => {
+    setDraft(line.text);
+    setEditingLine(line);
+  };
+
+  const saveEdit = (raw: string) => {
     if (!editingLine) return;
-    setLines((prev) =>
-      prev.map((l) =>
-        l.id === editingLine.id ? { ...l, text, edited: true } : l,
-      ),
-    );
+    // one visual line per caption: newlines/tabs become spaces (the burner does the same)
+    const text = raw.replace(/\s+/g, ' ').trim();
+    if (text) {
+      setLines((prev) =>
+        prev.map((l) =>
+          l.id === editingLine.id ? { ...l, text, edited: text !== l.text || l.edited } : l,
+        ),
+      );
+    }
     setEditingLine(null);
   };
 
@@ -181,7 +215,12 @@ export default function EditorScreen() {
       <SafeAreaView style={styles.chrome} edges={['top', 'bottom']}>
         {/* floating top bar */}
         <View style={styles.topBar}>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel="חזרה"
+          >
             <BlurView intensity={40} tint="dark" style={styles.roundButton}>
               <SymbolView
                 name="chevron.forward"
@@ -203,7 +242,9 @@ export default function EditorScreen() {
         {/* the live caption — tap to edit */}
         <Pressable
           style={styles.captionZone}
-          onPress={() => activeLine && setEditingLine(activeLine)}
+          onPress={() => activeLine && openEdit(activeLine)}
+          accessibilityRole="button"
+          accessibilityLabel="עריכת הכתובית"
         >
           {activeLine && (
             <View style={capStyle.chip}>
@@ -221,11 +262,22 @@ export default function EditorScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.pills}
           style={styles.pillsScroll}
+          onLayout={(e) => setPillsViewportW(e.nativeEvent.layout.width)}
+          onContentSizeChange={(w) => setPillsContentW(w)}
         >
           {lines.map((line) => {
             const active = line.id === activeLineId;
             return (
-              <Pressable key={line.id} onPress={() => seekTo(line)}>
+              <Pressable
+                key={line.id}
+                onPress={() => seekTo(line)}
+                onLayout={(e) => {
+                  const { x, width } = e.nativeEvent.layout;
+                  pillLayout.current[line.id] = { x, w: width };
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={line.text}
+              >
                 <BlurView
                   intensity={active ? 0 : 30}
                   tint="dark"
@@ -245,12 +297,7 @@ export default function EditorScreen() {
         </ScrollView>
 
         {/* style cards: your frame, each style on it */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.styleRow}
-          style={styles.styleScroll}
-        >
+        <View style={styles.styleRow}>
           {TEMPLATES.map((t) => {
             const active = t.id === templateId;
             const s = captionStyleFor(t);
@@ -259,9 +306,16 @@ export default function EditorScreen() {
                 key={t.id}
                 onPress={() => setTemplateId(t.id)}
                 style={styles.styleCardWrap}
+                accessibilityRole="button"
+                accessibilityLabel={`סגנון ${t.name}`}
+                accessibilityState={{ selected: active }}
               >
                 <View
-                  style={[styles.styleCard, active && styles.styleCardActive]}
+                  style={[
+                    styles.styleCard,
+                    { width: styleCardW, height: styleCardH },
+                    active && styles.styleCardActive,
+                  ]}
                 >
                   {thumbnail ? (
                     <Image
@@ -288,7 +342,7 @@ export default function EditorScreen() {
               </Pressable>
             );
           })}
-        </ScrollView>
+        </View>
 
         {/* single floating action */}
         <Pressable
@@ -364,16 +418,25 @@ export default function EditorScreen() {
           <Pressable style={styles.sheet} onPress={() => {}}>
             <Text style={styles.sheetTitle}>תיקון שורה</Text>
             <TextInput
-              defaultValue={editingLine?.text}
+              value={draft}
+              onChangeText={setDraft}
               autoFocus
               multiline
               style={styles.sheetInput}
               textAlign="right"
-              onSubmitEditing={(e) => saveEdit(e.nativeEvent.text)}
+              onSubmitEditing={() => saveEdit(draft)}
               blurOnSubmit
               returnKeyType="done"
+              accessibilityLabel="טקסט הכתובית"
             />
-            <Text style={styles.sheetHint}>אנטר לשמירה · הקשה בחוץ לביטול</Text>
+            <Pressable
+              style={styles.sheetSave}
+              onPress={() => saveEdit(draft)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.sheetSaveText}>שמירה</Text>
+            </Pressable>
+            <Text style={styles.sheetHint}>הקשה מחוץ לחלון מבטלת</Text>
           </Pressable>
         </Pressable>
       </Modal>
@@ -468,12 +531,14 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: '#4ADE80',
   },
-  styleScroll: { flexGrow: 0, marginBottom: 14 },
-  styleRow: { paddingHorizontal: 16, gap: 10, flexDirection: 'row-reverse' },
+  styleRow: {
+    paddingHorizontal: 16,
+    marginBottom: 14,
+    flexDirection: 'row-reverse',
+    justifyContent: 'space-between',
+  },
   styleCardWrap: { alignItems: 'center', gap: 5 },
   styleCard: {
-    width: 74,
-    height: 98,
     borderRadius: 14,
     overflow: 'hidden',
     backgroundColor: '#101014',
@@ -595,6 +660,14 @@ const styles = StyleSheet.create({
     minHeight: 60,
     writingDirection: 'rtl',
   },
+  sheetSave: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sheetSaveText: { color: colors.onAccent, fontSize: 16, fontFamily: fonts.bold },
   sheetHint: {
     color: 'rgba(255,255,255,0.4)',
     fontSize: 12,

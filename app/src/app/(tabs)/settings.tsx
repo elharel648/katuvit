@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import {
@@ -137,7 +138,9 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <Text style={styles.version}>כתוביות · גרסה 0.1 (פיתוח)</Text>
+        <Text style={styles.version}>
+          כתוביות · גרסה {Constants.expoConfig?.version ?? '0.1.0'}
+        </Text>
       </ScrollView>
 
       <Modal

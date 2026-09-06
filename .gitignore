@@ -7,3 +7,5 @@ poc/
 .DS_Store
 .env
 app/src/lib/config.ts
+__pycache__/
+*.pyc

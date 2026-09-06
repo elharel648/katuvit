@@ -4,6 +4,28 @@ import * as LegacyFS from 'expo-file-system/legacy';
 import { BURN_URL, KATUVIT_API_KEY, TRANSCRIBE_UPLOAD_URL } from './config';
 import type { TranscriptSegment } from './types';
 
+/** server error codes -> what the user should read */
+const ERROR_HE: Record<string, string> = {
+  unauthorized: 'בעיית הרשאה מול השרת — עדכנו את האפליקציה',
+  too_large: 'הסרטון גדול מדי (עד 400MB)',
+  too_long: 'הסרטון ארוך מדי — עד 3 דקות בגרסה הזו',
+  unreadable_media: 'לא הצלחנו לקרוא את קובץ הסרטון',
+  decode_failed: 'לא הצלחנו לעבד את הסרטון — נסו קובץ אחר',
+  media_not_found: 'הסרטון כבר לא בשרת — העלו אותו שוב',
+  burn_failed: 'הצריבה נכשלה — נסו שוב',
+  no_lines: 'אין כתוביות לצרוב',
+};
+
+function messageFor(body: string | undefined, status: number): string {
+  try {
+    const parsed = JSON.parse(body ?? '');
+    if (parsed?.error && ERROR_HE[parsed.error]) return ERROR_HE[parsed.error];
+  } catch {}
+  return `השרת החזיר שגיאה (${status})`;
+}
+
+const BURN_TIMEOUT_MS = 270_000; // server gives up at 240s; Modal at 300s
+
 export interface TranscribeResult {
   segments: TranscriptSegment[];
   duration: number;
@@ -23,7 +45,7 @@ export async function uploadAndTranscribe(
     fieldName: 'file',
     parameters: { api_key: KATUVIT_API_KEY },
   });
-  if (res.status !== 200) throw new Error(`השרת החזיר שגיאה (${res.status})`);
+  if (res.status !== 200) throw new Error(messageFor(res.body, res.status));
   const data = JSON.parse(res.body);
   if (!data.segments) throw new Error(data.error ?? 'תשובה לא צפויה מהשרת');
   return data as TranscribeResult;
@@ -43,7 +65,12 @@ export interface BurnParams {
  * two-step download path. Returns the local file uri.
  */
 export async function burnAndDownload(params: BurnParams): Promise<string> {
-  const res = await fetch(BURN_URL, {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), BURN_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(BURN_URL, {
+    signal: controller.signal,
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -54,17 +81,27 @@ export async function burnAndDownload(params: BurnParams): Promise<string> {
       quality: params.quality,
       font_size: params.fontSize,
     }),
-  });
-  if (!res.ok) throw new Error(`שרת הצריבה החזיר שגיאה (${res.status})`);
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new Error('הצריבה לקחה יותר מדי זמן — נסו סרטון קצר יותר');
+    }
+    throw new Error('אין חיבור לשרת — בדקו את האינטרנט ונסו שוב');
+  }
 
+  if (!res.ok) {
+    clearTimeout(timer);
+    throw new Error(messageFor(await res.text().catch(() => ''), res.status));
+  }
   const contentType = res.headers.get('content-type') ?? '';
   if (!contentType.includes('video')) {
-    // server returned a JSON error instead of bytes
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error ?? 'הצריבה נכשלה');
+    clearTimeout(timer);
+    throw new Error(messageFor(await res.text().catch(() => ''), res.status));
   }
 
   const buffer = await res.arrayBuffer();
+  clearTimeout(timer);
   const file = new File(Paths.cache, `katuvit-${params.mediaId}.mp4`);
   if (file.exists) file.delete();
   file.create();

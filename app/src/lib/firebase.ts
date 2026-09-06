@@ -1,5 +1,8 @@
 import { getApps, initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth, initializeAuth, signInAnonymously } from 'firebase/auth';
+// @ts-expect-error exported by firebase/auth's react-native build; absent from the web typings
+import { getReactNativePersistence } from 'firebase/auth';
 import { doc, getFirestore, onSnapshot } from 'firebase/firestore';
 
 // Firebase web config is public by design; security lives in Firestore rules.
@@ -13,7 +16,16 @@ const firebaseConfig = {
 
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// initializeAuth throws if called twice (fast refresh) — fall back to the existing instance.
+// Without RN persistence every launch would mint a NEW anonymous user (quota/credits break).
+function makeAuth() {
+  try {
+    return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+  } catch {
+    return getAuth(app);
+  }
+}
+export const auth = makeAuth();
 export const db = getFirestore(app);
 
 /** call once on app start; resolves to the anonymous uid */

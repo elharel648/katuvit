@@ -7,6 +7,7 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useEffect, useState } from 'react';
 import Animated from 'react-native-reanimated';
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   StyleSheet,
@@ -15,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useCreatePhase } from '@/lib/create-flow';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
 import { HeroAvatar } from '@/components/HeroAvatar';
@@ -52,6 +54,7 @@ export default function HomeScreen() {
   const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
   const session = getSession();
+  const phase = useCreatePhase();
 
   useEffect(() => {
     const t = setInterval(
@@ -85,14 +88,23 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
+      {phase === 'uploading' && (
+        <View style={styles.statusPill} accessibilityLiveRegion="polite">
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={styles.statusText}>מעלים ומתמללים… בדרך כלל חצי דקה</Text>
+        </View>
+      )}
+
       {/* hero */}
-      {session && lastThumb ? (
+      {session ? (
         <Pressable style={styles.hero} onPress={() => router.push('/editor')}>
-          <Image
-            source={{ uri: lastThumb }}
-            style={StyleSheet.absoluteFill}
-            contentFit="cover"
-          />
+          {lastThumb && (
+            <Image
+              source={{ uri: lastThumb }}
+              style={StyleSheet.absoluteFill}
+              contentFit="cover"
+            />
+          )}
           <LinearGradient
             colors={['rgba(11,14,23,0.1)', 'rgba(11,14,23,0.88)']}
             style={StyleSheet.absoluteFill}
@@ -228,8 +240,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: fonts.bold,
   },
+  statusPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 10,
+    alignSelf: 'center',
+    marginBottom: spacing.sm,
+    paddingHorizontal: 14,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  statusText: { color: colors.textDim, fontSize: 13, fontFamily: fonts.medium },
   hero: {
     flex: 1,
+    backgroundColor: colors.surface,
     marginHorizontal: spacing.md,
     borderRadius: radius.lg + 8,
     overflow: 'hidden',

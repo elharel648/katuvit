@@ -62,6 +62,8 @@ function CustomTabBar({ state, navigation }: any) {
       <View pointerEvents="box-none" style={[styles.createLayer, { bottom: (insets.bottom || 12) + 36 }]}>
         <Pressable
           onPress={() => startCreateFlow()}
+          accessibilityRole="button"
+          accessibilityLabel="סרטון חדש"
           style={styles.createHit}
           disabled={phase === 'uploading'}
         >
@@ -101,7 +103,14 @@ function TabItem({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={styles.tabItem} onPress={onPress} hitSlop={8}>
+    <Pressable
+      style={styles.tabItem}
+      onPress={onPress}
+      hitSlop={8}
+      accessibilityRole="tab"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: active }}
+    >
       <SymbolView
         name={icon as never}
         size={27}

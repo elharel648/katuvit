@@ -8,6 +8,9 @@ import { startSession } from './session';
 
 type Phase = 'idle' | 'uploading';
 
+/** server enforces the same cap; keep in sync with MAX_DURATION_S */
+const MAX_SECONDS = 180;
+
 let phase: Phase = 'idle';
 const listeners = new Set<() => void>();
 
@@ -26,6 +29,15 @@ export async function startCreateFlow() {
   });
   if (picked.canceled || !picked.assets[0]) return;
   const asset = picked.assets[0];
+
+  // ImagePicker reports duration in ms; library picks are NOT limited by videoMaxDuration
+  if (asset.duration && asset.duration / 1000 > MAX_SECONDS) {
+    Alert.alert(
+      'הסרטון ארוך מדי',
+      `בגרסה הזו אפשר עד ${MAX_SECONDS / 60} דקות. חתכו אותו באפליקציית התמונות ונסו שוב.`,
+    );
+    return;
+  }
 
   setPhase('uploading');
   try {

@@ -10,6 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { loadSettings } from '@/lib/settings';
 import { colors } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -21,6 +22,10 @@ export default function RootLayout() {
     Rubik_700Bold,
     Rubik_900Black,
   });
+
+  useEffect(() => {
+    loadSettings(); // persisted export quality / caption size, before any export
+  }, []);
 
   useEffect(() => {
     if (fontsLoaded) SplashScreen.hideAsync();
