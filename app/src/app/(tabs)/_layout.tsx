@@ -47,10 +47,22 @@ function CustomTabBar({ state, navigation }: any) {
           onPress={() => go('index')}
         />
 
-        {/* center: create */}
+        {/* center spacer — the real button floats above (outside the clipped blur) */}
+        <View style={styles.createWrap} />
+
+        {/* left: settings */}
+        <TabItem
+          {...sideTabs[1]}
+          active={isActive('settings')}
+          onPress={() => go('settings')}
+        />
+      </BlurView>
+
+      {/* floating create button — sibling of the bar so nothing clips it */}
+      <View pointerEvents="box-none" style={[styles.createLayer, { bottom: (insets.bottom || 12) + 30 }]}>
         <Pressable
           onPress={() => startCreateFlow()}
-          style={styles.createWrap}
+          style={styles.createHit}
           disabled={phase === 'uploading'}
         >
           <Animated.View
@@ -72,14 +84,7 @@ function CustomTabBar({ state, navigation }: any) {
             )}
           </View>
         </Pressable>
-
-        {/* left: settings */}
-        <TabItem
-          {...sideTabs[1]}
-          active={isActive('settings')}
-          onPress={() => go('settings')}
-        />
-      </BlurView>
+      </View>
     </View>
   );
 }
@@ -173,11 +178,18 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.accent,
   },
-  createWrap: {
+  createWrap: { width: 76 },
+  createLayer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  createHit: {
+    width: 84,
+    height: 84,
     alignItems: 'center',
     justifyContent: 'center',
-    width: 76,
-    marginTop: -34,
   },
   createGlow: {
     position: 'absolute',
