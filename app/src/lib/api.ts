@@ -204,6 +204,8 @@ export async function burnAndDownload(
       accent: params.style.accent,
       font: params.style.font,
       position: params.style.position,
+      pos_x: params.style.posX ?? 0.5,
+      pos_y: params.style.posY ?? 0.75,
       animation: params.style.animation,
       lines: params.lines,
       quality: params.quality,

@@ -214,11 +214,16 @@ def test_watermark_only_for_free_tier():
 
 
 def test_style_options_whitelist():
-    assert style_options({}) == {"template": "bold", "accent": "yellow", "font": "rubik", "position": "bottom", "animation": "none"}
+    base = {"template": "bold", "accent": "yellow", "font": "rubik", "position": "bottom", "animation": "none", "pos_x": 0.5, "pos_y": 0.75}
+    assert style_options({}) == base
     chosen = style_options({"template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"})
-    assert chosen == {"template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"}
+    assert chosen == {**base, "template": "neon", "accent": "pink", "font": "heebo", "position": "top", "animation": "pop"}
     junk = style_options({"template": "../x", "accent": "#fff", "font": "Comic Sans", "position": "left", "animation": "spin"})
-    assert junk == style_options({})
+    assert junk == base
+    # dragged position: fractions clamped into the frame
+    drag = style_options({"position": "custom", "pos_x": 0.2, "pos_y": 1.7})
+    assert (drag["position"], drag["pos_x"], drag["pos_y"]) == ("custom", 0.2, 0.95)
+    assert style_options({"position": "custom", "pos_x": "nope"})["pos_x"] == 0.5
 
 
 def test_looks_render_their_signature_tags():
@@ -266,6 +271,14 @@ def test_emphasised_words_are_always_accent_coloured():
     # static look shows emphasis too
     st = _events_for_line(line, TEMPLATES["classic"], ACCENTS["pink"], "none")
     assert st == [(0.0, 3.0, "טוב {\\c" + ACCENTS["pink"] + "&}חברים{\\r} יש")]
+
+
+def test_custom_position_pins_every_event():
+    lines = normalize_lines([LINE])
+    ass = build_ass(lines, "bold", 100, position="custom", pos_x=0.25, pos_y=0.4)
+    assert ",5,70,70,0,177" in ass                          # centre anchor for \\pos
+    assert ass.count("{\\pos(270,768)}") == 3                # 0.25*1080, 0.4*1920 on all 3 karaoke events
+    assert "{\\pos(" not in build_ass(lines, "bold", 100, position="top")
 
 
 def test_media_id_regex():

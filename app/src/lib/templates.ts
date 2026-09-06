@@ -31,11 +31,14 @@ export const FONTS: { id: FontId; name: string; family: string }[] = [
   { id: 'secular', name: 'Secular One', family: 'SecularOne_400Regular' },
 ];
 
-export const POSITIONS: { id: PositionId; name: string }[] = [
+export const POSITIONS: { id: Exclude<PositionId, 'custom'>; name: string }[] = [
   { id: 'bottom', name: 'למטה' },
   { id: 'center', name: 'באמצע' },
   { id: 'top',    name: 'למעלה' },
 ];
+
+/** vertical centre (fraction of frame height) of each preset — mirrors server margins on a 1920 canvas */
+export const PRESET_Y: Record<Exclude<PositionId, 'custom'>, number> = { bottom: 0.75, center: 0.5, top: 0.167 };
 
 export const ANIMATIONS: { id: AnimationId; name: string }[] = [
   { id: 'none', name: 'שקט' },

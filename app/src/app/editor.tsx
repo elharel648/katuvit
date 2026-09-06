@@ -21,6 +21,8 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
@@ -42,7 +44,7 @@ import {
 } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { CAPTION_SIZE_FONT, CAPTION_SIZE_LABELS, getSettings, type CaptionSize } from '@/lib/settings';
-import { ACCENTS, ANIMATIONS, FONTS, POSITIONS, TEMPLATES, accentHex, fontFamily } from '@/lib/templates';
+import { ACCENTS, ANIMATIONS, FONTS, POSITIONS, PRESET_Y, TEMPLATES, accentHex, fontFamily } from '@/lib/templates';
 import { colors, fonts } from '@/lib/theme';
 import type { CaptionLine, CaptionTemplate, StyleChoice, TranscriptSegment } from '@/lib/types';
 
@@ -100,6 +102,67 @@ export default function EditorScreen() {
   const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion' | 'size'>('look');
   const accent = accentHex(style.accent);
   const previewFont = fontFamily(style.font);
+
+  // --- where the video actually is on screen (contain) so drag positions map 1:1 to the burn ---
+  const [screen, setScreen] = useState({ w: 0, h: 0 });
+  const [videoAspect, setVideoAspect] = useState(9 / 16);
+  const rect = useMemo(() => {
+    const { w, h } = screen;
+    if (!w || !h) return { x: 0, y: 0, w: 0, h: 0 };
+    if (videoAspect < w / h) {
+      const rw = h * videoAspect;
+      return { x: (w - rw) / 2, y: 0, w: rw, h };
+    }
+    const rh = w / videoAspect;
+    return { x: 0, y: (h - rh) / 2, w, h: rh };
+  }, [screen, videoAspect]);
+
+  // caption centre in screen pixels (shared with the UI thread for a smooth drag)
+  const cx = useSharedValue(0);
+  const cy = useSharedValue(0);
+  const chipW = useSharedValue(0);
+  const chipH = useSharedValue(0);
+  const dragStart = useSharedValue({ x: 0, y: 0 });
+
+  useEffect(() => {
+    if (!rect.w) return;
+    const fx = style.position === 'custom' ? style.posX ?? 0.5 : 0.5;
+    const fy = style.position === 'custom' ? style.posY ?? 0.75 : PRESET_Y[style.position];
+    cx.value = rect.x + fx * rect.w;
+    cy.value = rect.y + fy * rect.h;
+  }, [rect, style.position, style.posX, style.posY, cx, cy]);
+
+  const commitDrag = (fx: number, fy: number) =>
+    setStyle((s) => ({ ...s, position: 'custom', posX: fx, posY: fy }));
+  const openActive = () => {
+    if (activeLineRef.current) openEdit(activeLineRef.current);
+  };
+
+  const captionGesture = useMemo(() => {
+    const pad = 24;
+    const pan = Gesture.Pan()
+      .onStart(() => {
+        dragStart.value = { x: cx.value, y: cy.value };
+      })
+      .onUpdate((e) => {
+        cx.value = Math.min(Math.max(dragStart.value.x + e.translationX, rect.x + pad), rect.x + rect.w - pad);
+        cy.value = Math.min(Math.max(dragStart.value.y + e.translationY, rect.y + pad), rect.y + rect.h - pad);
+      })
+      .onEnd(() => {
+        const fx = (cx.value - rect.x) / rect.w;
+        const fy = (cy.value - rect.y) / rect.h;
+        runOnJS(commitDrag)(Math.round(fx * 1000) / 1000, Math.round(fy * 1000) / 1000);
+      });
+    const tap = Gesture.Tap().onEnd(() => {
+      runOnJS(openActive)();
+    });
+    return Gesture.Race(pan, tap);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rect]);
+
+  const captionAnimated = useAnimatedStyle(() => ({
+    transform: [{ translateX: cx.value - chipW.value / 2 }, { translateY: cy.value - chipH.value / 2 }],
+  }));
   const [thumbnail, setThumbnail] = useState<string | null>(null);
   const [activeLineId, setActiveLineId] = useState<string>(initialLines[0]?.id);
   const [editingLine, setEditingLine] = useState<CaptionLine | null>(null);
@@ -149,13 +212,18 @@ export default function EditorScreen() {
   useEffect(() => {
     if (!videoUri) return;
     VideoThumbnails.getThumbnailAsync(videoUri, { time: 800 })
-      .then((r) => setThumbnail(r.uri))
+      .then((r) => {
+        setThumbnail(r.uri);
+        if (r.width && r.height) setVideoAspect(r.width / r.height);
+      })
       .catch(() => {});
   }, [videoUri]);
 
   const activeTemplate = TEMPLATES.find((t) => t.id === templateId)!;
   const capStyle = captionStyleFor(activeTemplate);
   const activeLine = lines.find((l) => l.id === activeLineId) ?? null;
+  const activeLineRef = useRef<CaptionLine | null>(null);
+  activeLineRef.current = activeLine;
 
   const seekTo = (line: CaptionLine) => {
     player.currentTime = line.start;
@@ -267,13 +335,13 @@ export default function EditorScreen() {
   };
 
   return (
-    <View style={styles.screen}>
+    <View style={styles.screen} onLayout={(e) => setScreen({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })}>
       {/* the video IS the interface */}
       {videoUri ? (
         <VideoView
           player={player}
           style={StyleSheet.absoluteFill}
-          contentFit="cover"
+          contentFit="contain"
           nativeControls={false}
         />
       ) : (
@@ -331,54 +399,7 @@ export default function EditorScreen() {
           </View>
         </View>
 
-        <View style={style.position === 'top' ? styles.flexSpacerSmall : styles.flexSpacer} />
-
-        {/* the live caption — tap to edit */}
-        <Pressable
-          style={[styles.captionZone, style.position === 'center' && styles.captionZoneCenter]}
-          onPress={() => activeLine && openEdit(activeLine)}
-          accessibilityRole="button"
-          accessibilityLabel="עריכת הכתובית"
-        >
-          {activeLine && (
-            <View style={capStyle.chip}>
-              <View
-                style={[
-                  styles.captionWords,
-                  { flexDirection: isRtlText(activeLine.text) ? 'row-reverse' : 'row' },
-                ]}
-              >
-                {previewWords(activeLine, activeTemplate, currentTime).map((w, i) => (
-                  <Text
-                    key={`${activeLine.id}-${i}`}
-                    style={[
-                      styles.captionText,
-                      capStyle.text,
-                      { fontFamily: previewFont },
-                      captionSize === 'small' && { fontSize: 22, lineHeight: 28 },
-                      captionSize === 'large' && { fontSize: 30, lineHeight: 36 },
-                      activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
-                      !w.active && activeLine.words[i]?.em && { color: accent },
-                      w.active && activeTemplate.mode !== 'boxword' && { color: accent },
-                      w.active && activeTemplate.mode === 'boxword' && {
-                        color: '#000000',
-                        backgroundColor: accent,
-                        borderRadius: 6,
-                        paddingHorizontal: 6,
-                      },
-                      w.active && {
-                        transform: [{ scale: style.animation === 'pop' ? 1.12 : activeTemplate.activeScale }],
-                      },
-                    ]}
-                  >
-                    {w.text}
-                  </Text>
-                ))}
-              </View>
-            </View>
-          )}
-        </Pressable>
-        {style.position !== 'bottom' && <View style={styles.flexSpacer} />}
+        <View style={styles.flexSpacer} />
 
         {/* line timeline */}
         <ScrollView
@@ -474,6 +495,11 @@ export default function EditorScreen() {
         )}
         {studioTab === 'position' && (
           <View style={styles.optionRow}>
+            <View style={[styles.optionChip, style.position === 'custom' && styles.optionChipActive]}>
+              <Text style={[styles.optionChipText, style.position === 'custom' && styles.optionChipTextActive]}>
+                {style.position === 'custom' ? 'חופשי · גררת' : 'גררו את הכתובית'}
+              </Text>
+            </View>
             {POSITIONS.map((o) => (
               <Pressable
                 key={o.id}
@@ -600,6 +626,57 @@ export default function EditorScreen() {
           )}
         </Pressable>
       </SafeAreaView>
+
+      {/* the live caption: drag anywhere on the frame, tap to edit */}
+      {activeLine && rect.w > 0 && (
+        <GestureDetector gesture={captionGesture}>
+          <Reanimated.View
+            style={[styles.floatingCaption, captionAnimated]}
+            onLayout={(e) => {
+              chipW.value = e.nativeEvent.layout.width;
+              chipH.value = e.nativeEvent.layout.height;
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="עריכת הכתובית (אפשר לגרור)"
+          >
+            <View style={capStyle.chip}>
+              <View
+                style={[
+                  styles.captionWords,
+                  { flexDirection: isRtlText(activeLine.text) ? 'row-reverse' : 'row' },
+                ]}
+              >
+                {previewWords(activeLine, activeTemplate, currentTime).map((w, i) => (
+                  <Text
+                    key={`${activeLine.id}-${i}`}
+                    style={[
+                      styles.captionText,
+                      capStyle.text,
+                      { fontFamily: previewFont },
+                      captionSize === 'small' && { fontSize: 22, lineHeight: 28 },
+                      captionSize === 'large' && { fontSize: 30, lineHeight: 36 },
+                      activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
+                      !w.active && activeLine.words[i]?.em && { color: accent },
+                      w.active && activeTemplate.mode !== 'boxword' && { color: accent },
+                      w.active && activeTemplate.mode === 'boxword' && {
+                        color: '#000000',
+                        backgroundColor: accent,
+                        borderRadius: 6,
+                        paddingHorizontal: 6,
+                      },
+                      w.active && {
+                        transform: [{ scale: style.animation === 'pop' ? 1.12 : activeTemplate.activeScale }],
+                      },
+                    ]}
+                  >
+                    {w.text}
+                  </Text>
+                ))}
+              </View>
+            </View>
+          </Reanimated.View>
+        </GestureDetector>
+      )}
 
       {/* export success */}
       <Modal
@@ -890,8 +967,7 @@ const styles = StyleSheet.create({
   optionChipActive: { borderColor: colors.accent },
   optionChipText: { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontFamily: fonts.medium },
   optionChipTextActive: { color: '#FFFFFF' },
-  flexSpacerSmall: { height: 90 },
-  captionZoneCenter: { justifyContent: 'center' },
+  floatingCaption: { position: 'absolute', left: 0, top: 0, maxWidth: '86%' },
   styleCardWrap: { alignItems: 'center', gap: 5 },
   styleCard: {
     borderRadius: 14,

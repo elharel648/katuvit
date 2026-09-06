@@ -38,7 +38,7 @@ export type CaptionMode = 'highlight' | 'boxword' | 'fill' | 'neon' | 'reveal' |
 
 export type AccentId = 'yellow' | 'green' | 'pink' | 'cyan' | 'orange' | 'white';
 export type FontId = 'rubik' | 'heebo' | 'secular';
-export type PositionId = 'bottom' | 'center' | 'top';
+export type PositionId = 'bottom' | 'center' | 'top' | 'custom';
 export type AnimationId = 'none' | 'pop';
 
 /** everything that shapes the burned captions besides the text itself */
@@ -48,6 +48,9 @@ export interface StyleChoice {
   font: FontId;
   position: PositionId;
   animation: AnimationId;
+  /** caption centre as fractions of the video frame — set by dragging (position === 'custom') */
+  posX?: number;
+  posY?: number;
 }
 
 export interface CaptionTemplate {

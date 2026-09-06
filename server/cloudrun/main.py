@@ -368,6 +368,7 @@ def burn(body: dict = Body(...), authorization: str | None = Header(default=None
             f.write(build_ass(
                 lines, style["template"], font_size, watermark=watermark,
                 accent=style["accent"], font=style["font"], position=style["position"], animation=style["animation"],
+                pos_x=style["pos_x"], pos_y=style["pos_y"],
             ))
         out = os.path.join(td, "out.mp4")
         try:

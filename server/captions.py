@@ -57,9 +57,18 @@ DEFAULT_ACCENT = "yellow"
 FONTS = {"rubik": "Rubik", "heebo": "Heebo", "secular": "Secular One", "noto": "Noto Sans Hebrew"}
 DEFAULT_FONT = "rubik"
 
-# alignment (numpad) + vertical margin on the 1080x1920 canvas
-POSITIONS = {"bottom": (2, 480), "center": (5, 0), "top": (8, 320)}
+# alignment (numpad) + vertical margin on the 1080x1920 canvas; "custom" = dragged by the user
+POSITIONS = {"bottom": (2, 480), "center": (5, 0), "top": (8, 320), "custom": (5, 0)}
 DEFAULT_POSITION = "bottom"
+CANVAS_W, CANVAS_H = 1080, 1920
+
+
+def clamp_frac(value, default: float) -> float:
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.05, min(0.95, v))
 
 # vocalisations only (never real words like "כאילו" — the editor offers those as a one-tap cleanup)
 FILLER_WORDS = {"אה", "אהה", "אההה", "אמ", "אממ", "אמממ", "המ", "הממ", "אמם", "uh", "um", "umm", "hmm", "mm", "erm", "ah", "eh"}
@@ -91,6 +100,9 @@ def style_options(body: dict) -> dict:
         "font": body.get("font") if body.get("font") in FONTS else DEFAULT_FONT,
         "position": body.get("position") if body.get("position") in POSITIONS else DEFAULT_POSITION,
         "animation": body.get("animation") if body.get("animation") in ANIMATIONS else DEFAULT_ANIMATION,
+        # centre of the caption as fractions of the frame (only used when position == "custom")
+        "pos_x": clamp_frac(body.get("pos_x"), 0.5),
+        "pos_y": clamp_frac(body.get("pos_y"), 0.75),
     }
 MAX_WORDS_PER_LINE = 24
 
@@ -254,6 +266,8 @@ def build_ass(
     font: str = DEFAULT_FONT,
     position: str = DEFAULT_POSITION,
     animation: str = DEFAULT_ANIMATION,
+    pos_x: float = 0.5,
+    pos_y: float = 0.75,
 ) -> str:
     tpl = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
     accent_c = ACCENTS.get(accent, ACCENTS[DEFAULT_ACCENT])
@@ -292,6 +306,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # free tier: small translucent brand mark, top-right, for the whole video
         events.append(f"Dialogue: 1,0:00:00.00,9:59:59.00,Mark,,0,0,0,,{WATERMARK_TEXT}\n")
     glow = "{\\blur4}" if mode == "neon" else ""
+    if position == "custom":
+        # dragged position: centre anchor (alignment 5) at exact canvas coordinates
+        px, py = int(round(pos_x * CANVAS_W)), int(round(pos_y * CANVAS_H))
+        glow = "{\\pos(%d,%d)}" % (px, py) + glow
     for line in lines:
         for start, end, text in _events_for_line(line, tpl, accent_c, animation):
             events.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Cap,,0,0,0,,{glow}{text}\n")
