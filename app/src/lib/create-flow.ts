@@ -35,6 +35,8 @@ export async function startCreateFlow() {
     // iOS's own trimmer opens after picking; with videoMaxDuration it also caps the cut at 3 min
     allowsEditing: true,
     videoMaxDuration: MAX_SECONDS,
+    // the trimmer re-encodes; without this iOS picks max bitrate (a 49MB clip came back as 295MB)
+    videoExportPreset: ImagePicker.VideoExportPreset.H264_1920x1080,
   });
   if (picked.canceled || !picked.assets[0]) return;
   const asset = picked.assets[0];

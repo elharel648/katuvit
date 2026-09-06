@@ -279,6 +279,7 @@ export default function EditorScreen() {
                       styles.captionText,
                       capStyle.text,
                       { fontFamily: previewFont },
+                      activeLine.text.length > 22 && { fontSize: 21, lineHeight: 26 },
                       w.active && activeTemplate.mode !== 'boxword' && { color: accent },
                       w.active && activeTemplate.mode === 'boxword' && {
                         color: '#000000',
@@ -649,11 +650,13 @@ const styles = StyleSheet.create({
   captionWords: {
     flexWrap: 'wrap',
     justifyContent: 'center',
-    alignItems: 'baseline',
+    alignItems: 'center',
     columnGap: 8,
+    rowGap: 2,
   },
   captionText: {
     fontSize: 26,
+    lineHeight: 32,
     fontFamily: fonts.bold,
     textAlign: 'center',
   },
