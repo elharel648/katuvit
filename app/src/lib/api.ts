@@ -1,6 +1,7 @@
-import * as FileSystem from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
+import * as LegacyFS from 'expo-file-system/legacy';
 
-import { BURN_URL, DOWNLOAD_URL, KATUVIT_API_KEY, TRANSCRIBE_UPLOAD_URL } from './config';
+import { BURN_URL, KATUVIT_API_KEY, TRANSCRIBE_UPLOAD_URL } from './config';
 import type { TranscriptSegment } from './types';
 
 export interface TranscribeResult {
@@ -16,23 +17,17 @@ export interface TranscribeResult {
 export async function uploadAndTranscribe(
   fileUri: string,
 ): Promise<TranscribeResult> {
-  const res = await FileSystem.uploadAsync(TRANSCRIBE_UPLOAD_URL, fileUri, {
+  const res = await LegacyFS.uploadAsync(TRANSCRIBE_UPLOAD_URL, fileUri, {
     httpMethod: 'POST',
-    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+    uploadType: LegacyFS.FileSystemUploadType.MULTIPART,
     fieldName: 'file',
     parameters: { api_key: KATUVIT_API_KEY },
   });
-
-  if (res.status !== 200) {
-    throw new Error(`השרת החזיר שגיאה (${res.status})`);
-  }
+  if (res.status !== 200) throw new Error(`השרת החזיר שגיאה (${res.status})`);
   const data = JSON.parse(res.body);
-  if (!data.segments) {
-    throw new Error(data.error ?? 'תשובה לא צפויה מהשרת');
-  }
+  if (!data.segments) throw new Error(data.error ?? 'תשובה לא צפויה מהשרת');
   return data as TranscribeResult;
 }
-
 
 export interface BurnParams {
   mediaId: string;
@@ -42,7 +37,11 @@ export interface BurnParams {
   fontSize: number;
 }
 
-/** burn captions in the cloud, download the MP4 locally, return its file uri */
+/**
+ * Burn captions in the cloud and write the returned MP4 to a local file.
+ * Single POST that returns the video bytes directly — avoids the flaky
+ * two-step download path. Returns the local file uri.
+ */
 export async function burnAndDownload(params: BurnParams): Promise<string> {
   const res = await fetch(BURN_URL, {
     method: 'POST',
@@ -57,14 +56,18 @@ export async function burnAndDownload(params: BurnParams): Promise<string> {
     }),
   });
   if (!res.ok) throw new Error(`שרת הצריבה החזיר שגיאה (${res.status})`);
-  const data = await res.json();
-  if (!data.result_id) throw new Error(data.error ?? 'הצריבה נכשלה');
 
-  const target = `${FileSystem.cacheDirectory}katuvit-${data.result_id}.mp4`;
-  const dl = await FileSystem.downloadAsync(
-    `${DOWNLOAD_URL}?id=${data.result_id}&key=${KATUVIT_API_KEY}`,
-    target,
-  );
-  if (dl.status !== 200) throw new Error('הורדת הסרטון נכשלה');
-  return dl.uri;
+  const contentType = res.headers.get('content-type') ?? '';
+  if (!contentType.includes('video')) {
+    // server returned a JSON error instead of bytes
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error ?? 'הצריבה נכשלה');
+  }
+
+  const buffer = await res.arrayBuffer();
+  const file = new File(Paths.cache, `katuvit-${params.mediaId}.mp4`);
+  if (file.exists) file.delete();
+  file.create();
+  file.write(new Uint8Array(buffer));
+  return file.uri;
 }
