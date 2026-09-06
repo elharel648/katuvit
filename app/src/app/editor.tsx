@@ -11,14 +11,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
 import { formatTime, splitIntoLines } from '@/lib/captions';
+import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
 import type { CaptionLine, TranscriptSegment } from '@/lib/types';
 
 export default function EditorScreen() {
-  const initialLines = useMemo(
-    () => splitIntoLines(demoTranscript as TranscriptSegment[]),
-    [],
-  );
+  const initialLines = useMemo(() => {
+    const session = getSession();
+    const segments =
+      session?.segments ?? (demoTranscript as TranscriptSegment[]);
+    return splitIntoLines(segments);
+  }, []);
   const [lines, setLines] = useState<CaptionLine[]>(initialLines);
   const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
 
