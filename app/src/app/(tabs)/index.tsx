@@ -26,9 +26,10 @@ type Phase = 'idle' | 'uploading';
 
 /** the product demos itself: one specimen line, cycling through real styles */
 const SPECIMEN_LINES = [
-  'רילס נכנס. כתוביות יוצאות.',
-  'גם כשעוברים באמצע ל-English',
-  'כל מילה. מדויק. על המסך.',
+  'טוב חברים, יש לי משהו להגיד לכם',
+  'אף אחד לא מספר לכם את זה',
+  'וזה היה honestly הדבר הכי נכון שעשיתי',
+  'תעצרו הכל, תקשיבו לזה רגע',
 ];
 
 /** karaoke: each word pops in sequence, like live captions */
