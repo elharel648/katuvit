@@ -17,7 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
-import { Avatar3D } from '@/components/Avatar3D';
+import { HeroAvatar } from '@/components/HeroAvatar';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
 
 /** the product demos itself: one specimen line, cycling through real styles */
@@ -144,7 +144,7 @@ export default function HomeScreen() {
               {/* 3D-style creator avatar */}
               <View style={styles.avatarGlow}>
                 <View style={styles.avatarRing}>
-                  <Avatar3D size={104} />
+                  <HeroAvatar size={150} />
                 </View>
               </View>
 
@@ -339,14 +339,14 @@ const styles = StyleSheet.create({
   },
   avatarGlow: {
     position: 'absolute',
-    top: 54,
+    top: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarRing: {
-    width: 116,
-    height: 116,
-    borderRadius: 58,
+    width: 158,
+    height: 158,
+    borderRadius: 79,
     alignItems: 'center',
     justifyContent: 'flex-end',
     overflow: 'hidden',
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   },
   waveRow: {
     position: 'absolute',
-    top: 168,
+    top: 204,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
