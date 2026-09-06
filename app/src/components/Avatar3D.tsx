@@ -20,24 +20,23 @@ import Svg, {
 const AEllipse = Animated.createAnimatedComponent(Ellipse);
 
 /**
- * Vector avatar with 3D-style shading (layered gradients, rim light, soft
- * shadow) whose mouth animates open/closed — a warm figure that "speaks".
+ * Vector avatar with soft 3D shading and refined, natural proportions
+ * (Notion/Linear-style clean portrait) whose mouth animates as it "speaks".
  * On-brand, no emoji, no external asset, always renders.
  */
-export function Avatar3D({ size = 108 }: { size?: number }) {
-  const mouth = useSharedValue(2); // mouth-open radius in svg units
+export function Avatar3D({ size = 112 }: { size?: number }) {
+  const mouth = useSharedValue(1.4);
 
   useEffect(() => {
-    // natural speaking rhythm: varied open/close, not a metronome
     mouth.value = withRepeat(
       withSequence(
-        withTiming(5.5, { duration: 180 }),
-        withTiming(2, { duration: 140 }),
-        withTiming(4.5, { duration: 200 }),
-        withTiming(1.5, { duration: 120 }),
-        withTiming(6, { duration: 220 }),
-        withTiming(2, { duration: 160 }),
-        withTiming(2, { duration: 500 }), // brief pause between "words"
+        withTiming(3.6, { duration: 170 }),
+        withTiming(1.4, { duration: 130 }),
+        withTiming(3, { duration: 190 }),
+        withTiming(1, { duration: 110 }),
+        withTiming(4, { duration: 210 }),
+        withTiming(1.4, { duration: 150 }),
+        withTiming(1.4, { duration: 520 }),
       ),
       -1,
       false,
@@ -48,88 +47,91 @@ export function Avatar3D({ size = 108 }: { size?: number }) {
   const mouthProps = useAnimatedProps(() => ({ ry: mouth.value }));
 
   return (
-    <Svg width={size} height={size} viewBox="0 0 120 128" fill="none">
+    <Svg width={size} height={size} viewBox="0 0 120 120" fill="none">
       <Defs>
-        <RadialGradient id="skin" cx="0.4" cy="0.3" r="0.9">
-          <Stop offset="0" stopColor="#FFEAC9" />
-          <Stop offset="0.55" stopColor="#F3C489" />
-          <Stop offset="1" stopColor="#CE945422" stopOpacity="1" />
+        <RadialGradient id="skin2" cx="0.42" cy="0.34" r="0.92">
+          <Stop offset="0" stopColor="#FFE3BE" />
+          <Stop offset="0.6" stopColor="#F0BE83" />
+          <Stop offset="1" stopColor="#D89A57" />
         </RadialGradient>
-        <RadialGradient id="skinCore" cx="0.4" cy="0.32" r="0.85">
-          <Stop offset="0" stopColor="#FFEAC9" />
-          <Stop offset="0.6" stopColor="#F1C085" />
-          <Stop offset="1" stopColor="#D89E5E" />
-        </RadialGradient>
-        <SvgGradient id="hair" x1="0.2" y1="0" x2="0.8" y2="1">
-          <Stop offset="0" stopColor="#5A4028" />
-          <Stop offset="0.5" stopColor="#3A2817" />
-          <Stop offset="1" stopColor="#241810" />
+        <SvgGradient id="hair2" x1="0.2" y1="0" x2="0.8" y2="1">
+          <Stop offset="0" stopColor="#4B3722" />
+          <Stop offset="1" stopColor="#291B10" />
         </SvgGradient>
-        <SvgGradient id="shirt" x1="0" y1="0" x2="1" y2="1">
-          <Stop offset="0" stopColor="#454A72" />
-          <Stop offset="1" stopColor="#222540" />
+        <SvgGradient id="shirt2" x1="0" y1="0" x2="0.6" y2="1">
+          <Stop offset="0" stopColor="#3E4368" />
+          <Stop offset="1" stopColor="#20233B" />
         </SvgGradient>
-        <RadialGradient id="rim" cx="0.5" cy="0.5" r="0.5">
-          <Stop offset="0.7" stopColor="#FFFFFF" stopOpacity="0" />
-          <Stop offset="1" stopColor="#FFD52E" stopOpacity="0.35" />
+        <RadialGradient id="cheek2" cx="0.5" cy="0.5" r="0.5">
+          <Stop offset="0" stopColor="#F0997A" stopOpacity="0.45" />
+          <Stop offset="1" stopColor="#F0997A" stopOpacity="0" />
         </RadialGradient>
-        <RadialGradient id="cheek" cx="0.5" cy="0.5" r="0.5">
-          <Stop offset="0" stopColor="#F59A79" stopOpacity="0.5" />
-          <Stop offset="1" stopColor="#F59A79" stopOpacity="0" />
+        <RadialGradient id="backglow" cx="0.5" cy="0.45" r="0.55">
+          <Stop offset="0" stopColor="#FFD52E" stopOpacity="0.22" />
+          <Stop offset="1" stopColor="#FFD52E" stopOpacity="0" />
         </RadialGradient>
       </Defs>
 
-      {/* rim glow */}
-      <Circle cx="60" cy="60" r="58" fill="url(#rim)" />
+      {/* soft back glow */}
+      <Circle cx="60" cy="56" r="52" fill="url(#backglow)" />
 
-      {/* shoulders */}
-      <Path d="M20 128c0-22 18-36 40-36s40 14 40 36z" fill="url(#shirt)" />
-      <Path d="M20 128c0-22 18-36 40-36 -14 6-22 20-22 36z" fill="#000" opacity="0.12" />
+      {/* shoulders — wider, lower, natural */}
+      <Path d="M18 120c0-19 19-30 42-30s42 11 42 30z" fill="url(#shirt2)" />
+      <Path d="M18 120c0-19 19-30 42-30 -16 5 -25 16 -25 30z" fill="#000" opacity="0.13" />
+      {/* collar hint */}
+      <Path d="M50 92c3 5 6 7 10 7s7-2 10-7" stroke="#000" strokeWidth="2" opacity="0.12" strokeLinecap="round" fill="none" />
 
-      {/* neck */}
-      <Path d="M49 80h22v17c0 6-5 10-11 10s-11-4-11-10z" fill="url(#skinCore)" />
-      <Path d="M49 86c3 5 7 7 11 7s8-2 11-7v-6H49z" fill="#000" opacity="0.14" />
+      {/* short neck */}
+      <Path d="M52 82h16v10c0 5-4 8-8 8s-8-3-8-8z" fill="url(#skin2)" />
+      <Path d="M52 86c2 3 5 5 8 5s6-2 8-5v-4H52z" fill="#000" opacity="0.15" />
 
-      {/* hair back mass */}
+      {/* hair back */}
       <Path
-        d="M26 52c0-21 15-36 34-36s34 15 34 36c0 7-1 13-4 18-1-16-6-25-10-27 3 9 3 18 1 23-15-7-27-7-42 0-2-5-2-14 1-23-4 2-9 11-10 27-3-5-4-11-4-18z"
-        fill="url(#hair)"
+        d="M30 50c0-18 13-31 30-31s30 13 30 31c0 6-1 11-3 15-2-14-6-21-9-23 2 8 2 15 0 19-12-6-24-6-36 0-2-4-2-11 0-19-3 2-7 9-9 23-2-4-3-9-3-15z"
+        fill="url(#hair2)"
       />
 
-      {/* face */}
-      <Ellipse cx="60" cy="54" rx="27" ry="29" fill="url(#skinCore)" />
-      {/* volume shadow on the right */}
+      {/* face — slightly oval, natural proportion */}
+      <Ellipse cx="60" cy="52" rx="23" ry="26" fill="url(#skin2)" />
+      {/* right-side volume shadow */}
       <Path
-        d="M60 25c15 0 27 13 27 29s-12 29-27 29c-4 0-8-1-11-3 10-3 17-13 17-26s-7-23-17-26c3-2 7-3 11-3z"
+        d="M60 26c13 0 23 12 23 26s-10 26-23 26c-3 0-6-1-9-2 9-3 15-12 15-24s-6-21-15-24c3-1 6-2 9-2z"
         fill="#000"
-        opacity="0.10"
+        opacity="0.09"
       />
-      {/* forehead highlight for sheen */}
-      <Ellipse cx="50" cy="40" rx="10" ry="6" fill="#FFF" opacity="0.18" />
+      {/* forehead sheen */}
+      <Ellipse cx="52" cy="38" rx="8" ry="4.5" fill="#FFF" opacity="0.16" />
 
       {/* cheeks */}
-      <Circle cx="45" cy="60" r="9" fill="url(#cheek)" />
-      <Circle cx="75" cy="60" r="9" fill="url(#cheek)" />
+      <Circle cx="47" cy="58" r="7" fill="url(#cheek2)" />
+      <Circle cx="73" cy="58" r="7" fill="url(#cheek2)" />
 
-      {/* eyes */}
-      <Ellipse cx="50" cy="52" rx="3.6" ry="4.6" fill="#2A1D12" />
-      <Ellipse cx="70" cy="52" rx="3.6" ry="4.6" fill="#2A1D12" />
-      <Circle cx="51.4" cy="50.4" r="1.3" fill="#FFF" />
-      <Circle cx="71.4" cy="50.4" r="1.3" fill="#FFF" />
-      {/* brows */}
-      <Path d="M44 44c3-2 6-2 9 0" stroke="#3A2817" strokeWidth="2.2" strokeLinecap="round" />
-      <Path d="M67 44c3-2 6-2 9 0" stroke="#3A2817" strokeWidth="2.2" strokeLinecap="round" />
+      {/* eyes — refined, almond */}
+      <Ellipse cx="51" cy="50" rx="3" ry="4" fill="#241810" />
+      <Ellipse cx="69" cy="50" rx="3" ry="4" fill="#241810" />
+      <Circle cx="52.1" cy="48.7" r="1.1" fill="#FFF" />
+      <Circle cx="70.1" cy="48.7" r="1.1" fill="#FFF" />
+      {/* soft brows */}
+      <Path d="M46 43.5c3-1.8 6-1.8 9 0" stroke="#3A2817" strokeWidth="2" strokeLinecap="round" />
+      <Path d="M65 43.5c3-1.8 6-1.8 9 0" stroke="#3A2817" strokeWidth="2" strokeLinecap="round" />
+      {/* nose hint */}
+      <Path d="M60 52c0 3-1 5-2.5 6" stroke="#C98A52" strokeWidth="1.8" strokeLinecap="round" opacity="0.5" />
 
       {/* animated speaking mouth */}
-      <AEllipse cx="60" cy="66" rx="7" animatedProps={mouthProps} fill="#6E2A2A" />
-      <Ellipse cx="60" cy="63.5" rx="6" ry="1.6" fill="#FFF" opacity="0.9" />
+      <AEllipse cx="60" cy="64" rx="5.5" animatedProps={mouthProps} fill="#6E2A2A" />
+      <Ellipse cx="60" cy="62" rx="5" ry="1.3" fill="#FFF" opacity="0.85" />
 
-      {/* front hair sweep */}
+      {/* front hair sweep with highlight */}
       <Path
-        d="M32 46c2-17 14-28 28-28s26 11 28 28c-4-9-10-13-13-14 1 3 1 7 0 9-10-4-20-4-30 0-1-2-1-6 0-9-3 1-9 5-13 14z"
-        fill="url(#hair)"
+        d="M37 46c2-15 12-26 26-26 -3 3 -3 8 -1 11 -8-3-16-3-24 0 -1-2-1-6 0-9-1 1-1 3-1 24z"
+        fill="url(#hair2)"
+        opacity="0"
       />
-      <Path d="M40 34c4-6 11-10 17-10" stroke="#7A5A38" strokeWidth="2.4" strokeLinecap="round" opacity="0.55" />
+      <Path
+        d="M36 47c2-16 13-27 27-27 3 0 6 1 9 2 4 2 8 7 10 15-3-6-7-9-10-10 1 3 1 6 0 8-11-4-21-4-31 0-1-2-1-5 0-8-2 1-4 8-5 20z"
+        fill="url(#hair2)"
+      />
+      <Path d="M42 34c4-5 10-9 16-9" stroke="#7A5A38" strokeWidth="2.2" strokeLinecap="round" opacity="0.5" />
     </Svg>
   );
 }
