@@ -1,45 +1,48 @@
 import type { CaptionTemplate } from './types';
 
-/** v0: visual identity only — the server holds the matching ASS styles */
+/**
+ * The looks. Ids and modes mirror server/transcriber.py TEMPLATES — the server
+ * owns the ASS rendering, the client renders the same idea live in the editor.
+ */
 export const TEMPLATES: CaptionTemplate[] = [
   {
-    id: 'classic',
-    name: 'קלאסי',
-    fontFamily: 'System',
+    id: 'bold',
+    name: 'בולט',
+    mode: 'highlight',
     textColor: '#FFFFFF',
+    activeColor: '#FFD52E',
+    activeScale: 1,
     outlineColor: '#000000',
-    backgroundColor: null,
+    backgroundColor: '#000000E0',
   },
   {
-    id: 'boxed',
-    name: 'קופסה',
-    fontFamily: 'System',
+    id: 'reveal',
+    name: 'גלישה',
+    mode: 'reveal',
     textColor: '#FFFFFF',
+    activeColor: '#FFFFFF',
+    activeScale: 1,
     outlineColor: '#000000',
-    backgroundColor: '#000000CC',
-  },
-  {
-    id: 'yellow',
-    name: 'צהוב',
-    fontFamily: 'System',
-    textColor: '#FFE23D',
-    outlineColor: '#000000',
-    backgroundColor: null,
-  },
-  {
-    id: 'pop',
-    name: 'פופ',
-    fontFamily: 'System',
-    textColor: '#FFFFFF',
-    outlineColor: '#E1306C',
     backgroundColor: null,
   },
   {
     id: 'clean',
     name: 'נקי',
-    fontFamily: 'System',
-    textColor: '#111111',
-    outlineColor: '#FFFFFF',
-    backgroundColor: '#FFFFFFB0',
+    mode: 'highlight',
+    textColor: '#FFFFFF',
+    activeColor: '#FFD52E',
+    activeScale: 1.08,
+    outlineColor: '#000000',
+    backgroundColor: null,
+  },
+  {
+    id: 'classic',
+    name: 'קלאסי',
+    mode: 'static',
+    textColor: '#FFFFFF',
+    activeColor: '#FFFFFF',
+    activeScale: 1,
+    outlineColor: '#000000',
+    backgroundColor: null,
   },
 ];

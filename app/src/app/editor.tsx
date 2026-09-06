@@ -26,7 +26,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
 import { burnAndDownload } from '@/lib/api';
-import { splitIntoLines } from '@/lib/captions';
+import { previewWords, retimeWords, splitIntoLines } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { CAPTION_SIZE_FONT, getSettings } from '@/lib/settings';
 import { TEMPLATES } from '@/lib/templates';
@@ -139,7 +139,7 @@ export default function EditorScreen() {
       const uri = await burnAndDownload({
         mediaId: session.mediaId,
         template: templateId,
-        lines: lines.map((l) => ({ start: l.start, end: l.end, text: l.text })),
+        lines: lines.map((l) => ({ start: l.start, end: l.end, text: l.text, words: l.words })),
         quality: settings.exportQuality,
         fontSize: CAPTION_SIZE_FONT[settings.captionSize],
       });
@@ -184,7 +184,14 @@ export default function EditorScreen() {
     if (text) {
       setLines((prev) =>
         prev.map((l) =>
-          l.id === editingLine.id ? { ...l, text, edited: text !== l.text || l.edited } : l,
+          l.id === editingLine.id
+            ? {
+                ...l,
+                text,
+                words: retimeWords(text, l.start, l.end, l.words),
+                edited: text !== l.text || l.edited,
+              }
+            : l,
         ),
       );
     }
@@ -256,9 +263,23 @@ export default function EditorScreen() {
         >
           {activeLine && (
             <View style={capStyle.chip}>
-              <Text style={[styles.captionText, capStyle.text]}>
-                {activeLine.text}
-              </Text>
+              <View style={styles.captionWords}>
+                {previewWords(activeLine, activeTemplate, currentTime).map((w, i) => (
+                  <Text
+                    key={`${activeLine.id}-${i}`}
+                    style={[
+                      styles.captionText,
+                      capStyle.text,
+                      w.active && {
+                        color: activeTemplate.activeColor,
+                        transform: [{ scale: activeTemplate.activeScale }],
+                      },
+                    ]}
+                  >
+                    {w.text}
+                  </Text>
+                ))}
+              </View>
             </View>
           )}
         </Pressable>
@@ -337,8 +358,18 @@ export default function EditorScreen() {
                     />
                   )}
                   <View style={styles.styleCardCaption}>
-                    <View style={[s.chip, styles.styleCardChip]}>
+                    <View style={[s.chip, styles.styleCardChip, styles.styleCardWords]}>
                       <Text style={[styles.styleCardText, s.text]}>שלום</Text>
+                      <Text
+                        style={[
+                          styles.styleCardText,
+                          s.text,
+                          t.mode === 'highlight' && { color: t.activeColor },
+                          t.mode === 'reveal' && { opacity: 0.35 },
+                        ]}
+                      >
+                        לכם
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -509,6 +540,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     marginBottom: 14,
   },
+  captionWords: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'baseline',
+    columnGap: 8,
+  },
   captionText: {
     fontSize: 26,
     fontFamily: fonts.bold,
@@ -564,6 +602,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   styleCardChip: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  styleCardWords: { flexDirection: 'row-reverse', columnGap: 3 },
   styleCardText: { fontSize: 11, fontFamily: fonts.bold },
   styleName: {
     color: 'rgba(255,255,255,0.55)',

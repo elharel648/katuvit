@@ -32,14 +32,21 @@ app = modal.App("katuvit-transcriber")
 # uploaded videos live here between upload and burn; cleanup_media purges them
 media = modal.Volume.from_name("katuvit-media", create_if_missing=True)
 
-# caption style -> ASS style values (colors are ASS &HAABBGGRR)
-ASS_STYLES = {
-    "classic": "&H00FFFFFF,&H00FFFFFF,&H00000000,&H88000000,-1,1,5,2",
-    "boxed": "&H00FFFFFF,&H00FFFFFF,&H00000000,&HB0000000,-1,4,0,0",
-    "yellow": "&H003DE2FF,&H003DE2FF,&H00000000,&H88000000,-1,1,5,2",
-    "pop": "&H00FFFFFF,&H00FFFFFF,&H006C30E1,&H88000000,-1,1,5,2",
-    "clean": "&H00111111,&H00111111,&H00FFFFFF,&H30FFFFFF,-1,4,0,0",
+# ---- caption looks --------------------------------------------------------------
+# ASS colours are &HAABBGGRR. Brand yellow #FFD52E -> BB=2E GG=D5 RR=FF.
+WHITE, BLACK, YELLOW = "&H00FFFFFF", "&H00000000", "&H002ED5FF"
+
+# mode: "highlight" = whole line visible, the spoken word lights up
+#       "reveal"    = words appear one by one as they are spoken
+#       "static"    = plain line captions
+TEMPLATES = {
+    "bold":    {"mode": "highlight", "box": True,  "outline": 9, "shadow": 0, "active": YELLOW, "scale": 100},  # outline = box padding
+    "reveal":  {"mode": "reveal",    "box": False, "outline": 5, "shadow": 2, "active": WHITE,  "scale": 100},
+    "clean":   {"mode": "highlight", "box": False, "outline": 5, "shadow": 2, "active": YELLOW, "scale": 108},
+    "classic": {"mode": "static",    "box": False, "outline": 5, "shadow": 2, "active": WHITE,  "scale": 100},
 }
+DEFAULT_TEMPLATE = "bold"
+MAX_WORDS_PER_LINE = 24
 
 
 # ---- pure helpers (unit-tested in test_transcriber.py) -----------------------
@@ -63,12 +70,46 @@ def clean_caption_text(text) -> str:
     return t[:MAX_TEXT_CHARS]
 
 
-def clamp_font(value, default: int = 88) -> int:
+def clamp_font(value, default: int = 108) -> int:
     try:
         v = int(value)
     except (TypeError, ValueError):
         return default
     return max(FONT_MIN, min(FONT_MAX, v))
+
+
+def even_words(text: str, start: float, end: float) -> list:
+    """No usable word timings (e.g. the user rewrote the line): spread words evenly."""
+    parts = text.split()
+    if not parts:
+        return []
+    step = (end - start) / len(parts)
+    return [{"w": w, "s": start + i * step, "e": start + (i + 1) * step} for i, w in enumerate(parts)]
+
+
+def normalize_words(raw, text: str, start: float, end: float) -> list:
+    """
+    Per-word timings from the client, sanitized and clamped to the line.
+    Falls back to even spacing when missing, malformed, or when the words
+    no longer spell the line's text (user edited it).
+    """
+    if not isinstance(raw, list) or not raw:
+        return even_words(text, start, end)
+    words = []
+    for item in raw[:MAX_WORDS_PER_LINE]:
+        if not isinstance(item, dict):
+            return even_words(text, start, end)
+        w = clean_caption_text(item.get("w", "")).strip()
+        try:
+            ws, we = float(item.get("s", start)), float(item.get("e", end))
+        except (TypeError, ValueError):
+            return even_words(text, start, end)
+        if not w:
+            continue
+        words.append({"w": w, "s": min(max(ws, start), end), "e": min(max(we, start), end)})
+    if not words or " ".join(x["w"] for x in words) != text:
+        return even_words(text, start, end)
+    return words
 
 
 def normalize_lines(raw) -> list:
@@ -87,15 +128,46 @@ def normalize_lines(raw) -> list:
         text = clean_caption_text(item.get("text", ""))
         if not text or end <= start:
             continue
-        out.append({"start": start, "end": end, "text": text})
+        out.append({
+            "start": start, "end": end, "text": text,
+            "words": normalize_words(item.get("words"), text, start, end),
+        })
     return out
 
 
-def build_ass(lines: list, template: str, font_size: int = 88) -> str:
-    vals = ASS_STYLES.get(template, ASS_STYLES["classic"])
-    primary, secondary, outline_c, back, bold, border_style, outline_w, shadow = (
-        vals.split(",")
-    )
+def _events_for_line(line: dict, tpl: dict) -> list:
+    """(start, end, text-with-overrides) events for one caption line."""
+    words = line["words"]
+    if tpl["mode"] == "static" or len(words) <= 1:
+        return [(line["start"], line["end"], line["text"])]
+
+    active_open = "{\\c" + tpl["active"] + "&"
+    if tpl["scale"] != 100:
+        active_open += f"\\fscx{tpl['scale']}\\fscy{tpl['scale']}"
+    active_open += "}"
+    reset = "{\\r}"
+
+    events = []
+    for i, w in enumerate(words):
+        seg_start = max(line["start"], w["s"]) if i else line["start"]
+        seg_end = words[i + 1]["s"] if i + 1 < len(words) else line["end"]
+        if seg_end <= seg_start:
+            continue
+        if tpl["mode"] == "reveal":
+            text = " ".join(x["w"] for x in words[: i + 1])
+        else:  # highlight
+            text = " ".join(
+                (active_open + x["w"] + reset) if j == i else x["w"]
+                for j, x in enumerate(words)
+            )
+        events.append((seg_start, seg_end, text))
+    return events
+
+
+def build_ass(lines: list, template: str, font_size: int = 108) -> str:
+    tpl = TEMPLATES.get(template, TEMPLATES[DEFAULT_TEMPLATE])
+    border_style = 4 if tpl["box"] else 1
+    back = "&H9A000000" if tpl["box"] else "&H80000000"
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -104,16 +176,16 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap,Noto Sans Hebrew,{font_size},{primary},{secondary},{outline_c},{back},{bold},0,0,0,100,100,0,0,{border_style},{outline_w},{shadow},2,60,60,340,177
+Style: Cap,Noto Sans Hebrew,{font_size},{WHITE},{WHITE},{BLACK},{back},-1,0,0,0,100,100,0,0,{border_style},{tpl['outline']},{tpl['shadow']},2,70,70,480,177
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-    events = "".join(
-        f"Dialogue: 0,{ass_time(l['start'])},{ass_time(l['end'])},Cap,,0,0,0,,{l['text']}\n"
-        for l in lines
-    )
-    return header + events
+    events = []
+    for line in lines:
+        for start, end, text in _events_for_line(line, tpl):
+            events.append(f"Dialogue: 0,{ass_time(start)},{ass_time(end)},Cap,,0,0,0,,{text}\n")
+    return header + "".join(events)
 
 
 def check_key(provided, expected) -> bool:
@@ -287,7 +359,7 @@ class Transcriber:
         if not lines:
             return _json({"error": "no_lines"}, 400)
 
-        template = req.get("template") if req.get("template") in ASS_STYLES else "classic"
+        template = req.get("template") if req.get("template") in TEMPLATES else DEFAULT_TEMPLATE
         font_size = clamp_font(req.get("font_size"))
         width = 720 if req.get("quality") == "720p" else 1080
 

@@ -1,6 +1,6 @@
-import type { CaptionLine, TranscriptSegment, Word } from './types';
+import type { CaptionLine, CaptionTemplate, TranscriptSegment, Word } from './types';
 
-/** mirrors the server-side grouping in burn.py — keep the two in sync */
+/** grouping rule — the burn server renders whatever lines we send, so this is the source of truth */
 const MAX_WORDS_PER_LINE = 4;
 const MAX_LINE_SPAN_SECONDS = 2.4;
 
@@ -10,15 +10,20 @@ export function splitIntoLines(segments: TranscriptSegment[]): CaptionLine[] {
   let current: Word[] = [];
 
   const flush = () => {
-    if (current.length === 0) return;
+    const trimmed = current
+      .map((w) => ({ w: w.w.trim(), s: w.s, e: w.e }))
+      .filter((w) => w.w.length > 0);
+    if (trimmed.length === 0) {
+      current = [];
+      return;
+    }
     lines.push({
       id: `line-${lines.length}`,
-      start: current[0].s,
-      end: current[current.length - 1].e,
-      text: current
-        .map((w) => w.w)
-        .join('')
-        .trim(),
+      start: trimmed[0].s,
+      end: trimmed[trimmed.length - 1].e,
+      // text and words must spell the same thing — the server checks and falls back otherwise
+      text: trimmed.map((w) => w.w).join(' '),
+      words: trimmed,
       edited: false,
     });
     current = [];
@@ -32,6 +37,56 @@ export function splitIntoLines(segments: TranscriptSegment[]): CaptionLine[] {
   }
   flush();
   return lines;
+}
+
+/**
+ * Word timings for an edited line. Same word count as before → keep the spoken
+ * timings (typo fixes stay in sync); otherwise spread the new words evenly.
+ */
+export function retimeWords(
+  text: string,
+  start: number,
+  end: number,
+  previous?: Word[],
+): Word[] {
+  const parts = text.split(/\s+/).filter(Boolean);
+  if (previous && previous.length === parts.length) {
+    return parts.map((w, i) => ({ w, s: previous[i].s, e: previous[i].e }));
+  }
+  const step = (end - start) / Math.max(parts.length, 1);
+  return parts.map((w, i) => ({ w, s: start + i * step, e: start + (i + 1) * step }));
+}
+
+/** index of the word being spoken at time t: a word stays active until the next one starts */
+export function activeWordIndex(line: CaptionLine, t: number): number {
+  let idx = 0;
+  for (let i = 0; i < line.words.length; i++) {
+    if (t >= line.words[i].s) idx = i;
+  }
+  return idx;
+}
+
+export interface PreviewWord {
+  text: string;
+  active: boolean;
+}
+
+/** what the live preview shows for a line at time t, per template mode */
+export function previewWords(
+  line: CaptionLine,
+  template: CaptionTemplate,
+  t: number,
+): PreviewWord[] {
+  if (line.words.length === 0) return [{ text: line.text, active: false }];
+  const active = activeWordIndex(line, t);
+  switch (template.mode) {
+    case 'highlight':
+      return line.words.map((w, i) => ({ text: w.w, active: i === active }));
+    case 'reveal':
+      return line.words.slice(0, active + 1).map((w) => ({ text: w.w, active: false }));
+    default:
+      return line.words.map((w) => ({ text: w.w, active: false }));
+  }
 }
 
 export function formatTime(seconds: number): string {

@@ -2,7 +2,7 @@ import { File, Paths } from 'expo-file-system';
 import * as LegacyFS from 'expo-file-system/legacy';
 
 import { BURN_URL, KATUVIT_API_KEY, TRANSCRIBE_UPLOAD_URL } from './config';
-import type { TranscriptSegment } from './types';
+import type { TranscriptSegment, Word } from './types';
 
 /** server error codes -> what the user should read */
 const ERROR_HE: Record<string, string> = {
@@ -73,7 +73,7 @@ export async function uploadAndTranscribe(
 export interface BurnParams {
   mediaId: string;
   template: string;
-  lines: { start: number; end: number; text: string }[];
+  lines: { start: number; end: number; text: string; words: Word[] }[];
   quality: string;
   fontSize: number;
 }

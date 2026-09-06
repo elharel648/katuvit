@@ -57,7 +57,7 @@ export const CAPTION_SIZE_LABELS: Record<CaptionSize, string> = {
 
 /** ASS font size sent to the burn server per caption size */
 export const CAPTION_SIZE_FONT: Record<CaptionSize, number> = {
-  small: 72,
-  medium: 88,
-  large: 106,
+  small: 92,
+  medium: 108,
+  large: 124,
 };
