@@ -28,7 +28,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import demoTranscript from '@/fixtures/transcript-demo.json';
 import { burnAndDownload } from '@/lib/api';
 import {
+  adjustLineDuration,
   deleteLine,
+  formatTime,
   isRtlText,
   mergeWithNext,
   nudgeLine,
@@ -324,6 +326,12 @@ export default function EditorScreen() {
   const doNudge = (delta: number) => {
     if (!editingLine) return;
     commit((prev) => nudgeLine(prev, editingLine.id, delta));
+    const moved = lines.find((l) => l.id === editingLine.id);
+    if (moved) player.currentTime = Math.max(0, moved.start + delta); // show the frame it now starts on
+  };
+  const doDuration = (delta: number) => {
+    if (!editingLine) return;
+    commit((prev) => adjustLineDuration(prev, editingLine.id, delta));
   };
   const doCleanFillers = () => {
     let removed = 0;
@@ -775,20 +783,37 @@ export default function EditorScreen() {
               </View>
             )}
 
+            {/* timing: live readout + controls that visibly respond */}
+            {sheetLine && (
+              <View style={styles.timingBlock}>
+                <Text style={styles.timingLabel}>
+                  {`מ-${formatTime(sheetLine.start)} עד ${formatTime(sheetLine.end)} · ${(sheetLine.end - sheetLine.start).toFixed(1)} שניות`}
+                </Text>
+                <View style={styles.sheetActions}>
+                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doNudge(-0.2)} accessibilityRole="button">
+                    <Text style={styles.sheetActionText}>מוקדם −0.2</Text>
+                  </Pressable>
+                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doNudge(0.2)} accessibilityRole="button">
+                    <Text style={styles.sheetActionText}>מאוחר +0.2</Text>
+                  </Pressable>
+                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doDuration(-0.2)} accessibilityRole="button">
+                    <Text style={styles.sheetActionText}>קצר −0.2</Text>
+                  </Pressable>
+                  <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={() => doDuration(0.2)} accessibilityRole="button">
+                    <Text style={styles.sheetActionText}>ארוך +0.2</Text>
+                  </Pressable>
+                </View>
+              </View>
+            )}
+
             <View style={styles.sheetActions}>
-              <Pressable style={styles.sheetAction} onPress={() => doNudge(-0.2)} accessibilityRole="button">
-                <Text style={styles.sheetActionText}>−0.2ש׳</Text>
-              </Pressable>
-              <Pressable style={styles.sheetAction} onPress={() => doNudge(0.2)} accessibilityRole="button">
-                <Text style={styles.sheetActionText}>+0.2ש׳</Text>
-              </Pressable>
-              <Pressable style={styles.sheetAction} onPress={doSplit} accessibilityRole="button">
+              <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={doSplit} accessibilityRole="button">
                 <Text style={styles.sheetActionText}>פיצול</Text>
               </Pressable>
-              <Pressable style={styles.sheetAction} onPress={doMerge} accessibilityRole="button">
+              <Pressable style={({ pressed }) => [styles.sheetAction, pressed && styles.sheetActionPressed]} onPress={doMerge} accessibilityRole="button">
                 <Text style={styles.sheetActionText}>איחוד עם הבאה</Text>
               </Pressable>
-              <Pressable style={[styles.sheetAction, styles.sheetActionDanger]} onPress={doDelete} accessibilityRole="button">
+              <Pressable style={({ pressed }) => [styles.sheetAction, styles.sheetActionDanger, pressed && styles.sheetActionPressed]} onPress={doDelete} accessibilityRole="button">
                 <Text style={[styles.sheetActionText, styles.sheetActionDangerText]}>מחיקה</Text>
               </Pressable>
             </View>
@@ -864,6 +889,9 @@ const styles = StyleSheet.create({
   sheetAction: { paddingHorizontal: 12, height: 36, borderRadius: 999, backgroundColor: '#1E1E24', justifyContent: 'center' },
   sheetActionText: { color: 'rgba(255,255,255,0.85)', fontSize: 13, fontFamily: fonts.medium },
   sheetActionDanger: { backgroundColor: 'rgba(255,77,77,0.14)' },
+  sheetActionPressed: { opacity: 0.55, transform: [{ scale: 0.97 }] },
+  timingBlock: { gap: 8 },
+  timingLabel: { color: colors.accent, fontSize: 13, fontFamily: fonts.bold, textAlign: 'right' },
   sheetActionDangerText: { color: '#FF6B6B' },
   titleChip: {
     borderRadius: 999,

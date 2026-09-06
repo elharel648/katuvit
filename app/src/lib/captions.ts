@@ -149,6 +149,22 @@ export function nudgeLine(lines: CaptionLine[], id: string, delta: number): Capt
   });
 }
 
+/** lengthen or shorten how long a line stays on screen; word timings stretch with it */
+export function adjustLineDuration(lines: CaptionLine[], id: string, delta: number): CaptionLine[] {
+  return lines.map((l) => {
+    if (l.id !== id) return l;
+    const newEnd = Math.max(l.start + 0.4, l.end + delta);
+    const oldSpan = Math.max(l.end - l.start, 0.001);
+    const k = (newEnd - l.start) / oldSpan;
+    return {
+      ...l,
+      end: newEnd,
+      edited: true,
+      words: l.words.map((w) => ({ ...w, s: l.start + (w.s - l.start) * k, e: l.start + (w.e - l.start) * k })),
+    };
+  });
+}
+
 export function toggleEmphasis(lines: CaptionLine[], id: string, wordIndex: number): CaptionLine[] {
   return lines.map((l) =>
     l.id === id
