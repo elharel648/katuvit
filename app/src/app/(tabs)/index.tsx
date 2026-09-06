@@ -39,6 +39,14 @@ const breathe = {
   '100%': { transform: [{ scale: 1 }] },
 };
 
+const wavePulse = {
+  '0%': { transform: [{ scaleY: 0.5 }] },
+  '50%': { transform: [{ scaleY: 1 }] },
+  '100%': { transform: [{ scaleY: 0.5 }] },
+};
+
+const WAVE_BARS = [14, 26, 18, 34, 22, 40, 28, 20, 32, 16, 30, 24];
+
 export default function HomeScreen() {
   const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
@@ -109,62 +117,111 @@ export default function HomeScreen() {
         </Pressable>
       ) : (
         <View style={styles.hero}>
-          {/* cinematic backdrop: layered gradients, no dead flat box */}
+          {/* ambient backdrop */}
           <LinearGradient
-            colors={['#1A2140', '#0E1220', '#0B0E17']}
-            start={{ x: 0.2, y: 0 }}
-            end={{ x: 0.8, y: 1 }}
+            colors={['#161C33', '#0E1220', '#0B0E17']}
+            start={{ x: 0.3, y: 0 }}
+            end={{ x: 0.7, y: 1 }}
             style={StyleSheet.absoluteFill}
           />
-          <LinearGradient
-            colors={['transparent', 'rgba(255,213,46,0.05)', 'transparent']}
-            start={{ x: 0, y: 0.3 }}
-            end={{ x: 1, y: 0.7 }}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.specimenZone}>
-            <View
-              style={[
-                styles.specimenChip,
-                {
-                  backgroundColor: template.backgroundColor ?? 'transparent',
-                },
-              ]}
-            >
-              <View style={styles.wordsRow}>
-                {line.split(' ').map((w, i) => (
-                  <Animated.Text
-                    key={`${specimenIdx}-${i}`}
+          {/* warm glow blob behind the card */}
+          <View style={styles.glowBlob} pointerEvents="none" />
+
+          {/* the showcase: a reel card with captions, floating with depth */}
+          <View style={styles.showcaseZone}>
+            {/* back card peeking for depth */}
+            <View style={styles.reelCardBack} />
+
+            {/* front reel card */}
+            <View style={styles.reelCard}>
+              <LinearGradient
+                colors={['#2A2350', '#3A2A4E', '#1A1830']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={StyleSheet.absoluteFill}
+              />
+              {/* abstract creator avatar */}
+              <View style={styles.avatarGlow}>
+                <LinearGradient
+                  colors={['#FFD52E', '#FF9E2E']}
+                  style={styles.avatarInner}
+                >
+                  <SymbolView name="person.fill" size={30} tintColor="#1A1830" />
+                </LinearGradient>
+              </View>
+
+              {/* audio waveform — the core: voice becomes captions */}
+              <View style={styles.waveRow}>
+                {WAVE_BARS.map((h, i) => (
+                  <Animated.View
+                    key={i}
                     style={[
-                      styles.specimenText,
+                      styles.waveBar,
+                      { height: h },
                       {
-                        color: template.textColor,
-                        textShadowColor: template.backgroundColor
-                          ? 'transparent'
-                          : template.outlineColor,
-                      },
-                      {
-                        animationName: wordIn,
-                        animationDuration: '360ms',
-                        animationDelay: `${i * 150}ms`,
-                        animationFillMode: 'backwards',
-                        animationTimingFunction: 'ease-out',
+                        animationName: wavePulse,
+                        animationDuration: '900ms',
+                        animationDelay: `${i * 70}ms`,
+                        animationIterationCount: 'infinite',
+                        animationTimingFunction: 'ease-in-out',
                       },
                     ]}
-                  >
-                    {w}
-                  </Animated.Text>
+                  />
                 ))}
               </View>
+
+              {/* the live caption, karaoke word-by-word */}
+              <View
+                style={[
+                  styles.reelCaption,
+                  { backgroundColor: template.backgroundColor ?? 'transparent' },
+                ]}
+              >
+                <View style={styles.wordsRow}>
+                  {line.split(' ').map((w, i) => (
+                    <Animated.Text
+                      key={`${specimenIdx}-${i}`}
+                      style={[
+                        styles.reelCaptionText,
+                        {
+                          color: template.textColor,
+                          textShadowColor: template.backgroundColor
+                            ? 'transparent'
+                            : template.outlineColor,
+                        },
+                        {
+                          animationName: wordIn,
+                          animationDuration: '360ms',
+                          animationDelay: `${i * 150}ms`,
+                          animationFillMode: 'backwards',
+                          animationTimingFunction: 'ease-out',
+                        },
+                      ]}
+                    >
+                      {w}
+                    </Animated.Text>
+                  ))}
+                </View>
+              </View>
             </View>
-            <Text style={styles.specimenStyleName}>סגנון · {template.name}</Text>
-            <Pressable
-              style={styles.demoLink}
-              onPress={() => router.push('/editor')}
-            >
-              <Text style={styles.demoLinkText}>אין סרטון ביד? נסו את הדמו</Text>
-            </Pressable>
+
+            {/* floating glass chips for depth */}
+            <BlurView intensity={30} tint="dark" style={[styles.floatChip, styles.floatChipTop]}>
+              <View style={styles.dotLive} />
+              <Text style={styles.floatChipText}>עברית + English</Text>
+            </BlurView>
+            <BlurView intensity={30} tint="dark" style={[styles.floatChip, styles.floatChipBottom]}>
+              <SymbolView name="checkmark" size={11} tintColor={colors.accent} />
+              <Text style={styles.floatChipText}>סגנון · {template.name}</Text>
+            </BlurView>
           </View>
+
+          <Pressable
+            style={styles.demoLink}
+            onPress={() => router.push('/editor')}
+          >
+            <Text style={styles.demoLinkText}>אין סרטון ביד? נסו את הדמו</Text>
+          </Pressable>
         </View>
       )}
 
@@ -247,43 +304,106 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: fonts.bold,
   },
-  specimenZone: {
+  glowBlob: {
+    position: 'absolute',
+    top: '18%',
+    alignSelf: 'center',
+    width: 300,
+    height: 300,
+    borderRadius: 150,
+    backgroundColor: 'rgba(255,213,46,0.10)',
+    // soft radial-ish glow via large blur substitute
+    opacity: 0.9,
+  },
+  showcaseZone: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 14,
-    paddingHorizontal: spacing.lg,
   },
-  wordsRow: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
+  reelCardBack: {
+    position: 'absolute',
+    width: 190,
+    height: 320,
+    borderRadius: 26,
+    backgroundColor: '#20263F',
+    transform: [{ rotate: '-8deg' }, { translateX: 26 }],
+    opacity: 0.6,
+  },
+  reelCard: {
+    width: 210,
+    height: 356,
+    borderRadius: 28,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    paddingBottom: 26,
+    transform: [{ rotate: '3deg' }],
+    shadowColor: '#000',
+    shadowOpacity: 0.5,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 16 },
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  avatarGlow: {
+    position: 'absolute',
+    top: 54,
+    alignItems: 'center',
     justifyContent: 'center',
-    columnGap: 9,
   },
-  ghostChipTop: {
-    top: '20%',
-    right: '12%',
-    transform: [{ rotate: '6deg' }],
+  avatarInner: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  ghostChipBottom: {
-    bottom: '18%',
-    left: '10%',
-    transform: [{ rotate: '-7deg' }],
+  waveRow: {
+    position: 'absolute',
+    top: 168,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    height: 44,
   },
-  specimenChip: {
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+  waveBar: {
+    width: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,213,46,0.85)',
   },
-  specimenText: {
-    fontSize: 27,
+  reelCaption: {
+    borderRadius: 9,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    maxWidth: 180,
+  },
+  reelCaptionText: {
+    fontSize: 15,
     fontFamily: fonts.bold,
     textAlign: 'center',
-    textShadowRadius: 10,
-    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 6,
+    textShadowOffset: { width: 0, height: 1 },
   },
+  floatChip: {
+    position: 'absolute',
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    height: 34,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  floatChipTop: { top: '20%', left: 24, transform: [{ rotate: '-4deg' }] },
+  floatChipBottom: { bottom: '20%', right: 20, transform: [{ rotate: '4deg' }] },
+  floatChipText: { color: '#FFFFFF', fontSize: 12, fontFamily: fonts.medium },
+  dotLive: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
   demoLink: {
-    marginTop: 4,
+    alignSelf: 'center',
+    marginTop: 14,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 999,
@@ -292,24 +412,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  demoLinkText: {
-    color: colors.textDim,
-    fontSize: 13,
-    fontFamily: fonts.medium,
-  },
-  specimenStyleName: {
-    color: colors.textFaint,
-    fontSize: 13,
-    fontFamily: fonts.medium,
-  },
-  heroFootnoteWrap: {
-    alignItems: 'center',
-    paddingBottom: spacing.md,
-  },
-  heroFootnote: {
-    color: colors.textFaint,
-    fontSize: 12,
-    fontFamily: fonts.regular,
+  demoLinkText: { color: colors.textDim, fontSize: 13, fontFamily: fonts.medium },
+  wordsRow: {
+    flexDirection: 'row-reverse',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    columnGap: 9,
   },
   footnote: {
     color: colors.textFaint,
