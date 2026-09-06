@@ -39,7 +39,7 @@ function CustomTabBar({ state, navigation }: any) {
 
   return (
     <View style={[styles.wrap, { paddingBottom: insets.bottom || 12 }]}>
-      <BlurView intensity={50} tint="dark" style={styles.bar}>
+      <BlurView intensity={40} tint="systemThickMaterialDark" style={styles.bar}>
         {/* right: home */}
         <TabItem
           {...sideTabs[0]}
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.12)',
-    backgroundColor: 'rgba(18,22,36,0.7)',
+    backgroundColor: 'rgba(10,10,11,0.6)',
   },
   tabItem: {
     alignItems: 'center',

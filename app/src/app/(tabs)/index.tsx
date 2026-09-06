@@ -20,7 +20,6 @@ import { useCreatePhase } from '@/lib/create-flow';
 import { quotaLabel, useEntitlements } from '@/lib/entitlements';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
-import { HeroAvatar } from '@/components/HeroAvatar';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
 
 /** the product demos itself: one specimen line, cycling through real styles */
@@ -48,8 +47,6 @@ const wavePulse = {
   '50%': { transform: [{ scaleY: 1 }] },
   '100%': { transform: [{ scaleY: 0.5 }] },
 };
-
-const WAVE_BARS = [14, 26, 18, 34, 22, 40, 28, 20, 32, 16, 30, 24];
 
 export default function HomeScreen() {
   const [lastThumb, setLastThumb] = useState<string | null>(null);
@@ -156,36 +153,11 @@ export default function HomeScreen() {
           <View style={styles.showcaseZone}>
             <View style={styles.reelCard}>
               <LinearGradient
-                colors={['#241F45', '#1B1836', '#12101F']}
-                start={{ x: 0.2, y: 0 }}
-                end={{ x: 0.8, y: 1 }}
+                colors={['#1C1C20', '#0C0C0E']}
+                start={{ x: 0.5, y: 0 }}
+                end={{ x: 0.5, y: 1 }}
                 style={StyleSheet.absoluteFill}
               />
-              <View style={styles.avatarGlow}>
-                <View style={styles.avatarRing}>
-                  <HeroAvatar size={150} />
-                </View>
-              </View>
-
-              <View style={styles.waveRow}>
-                {WAVE_BARS.slice(2, 10).map((h, i) => (
-                  <Animated.View
-                    key={i}
-                    style={[
-                      styles.waveBar,
-                      { height: h },
-                      {
-                        animationName: wavePulse,
-                        animationDuration: '900ms',
-                        animationDelay: `${i * 80}ms`,
-                        animationIterationCount: 'infinite',
-                        animationTimingFunction: 'ease-in-out',
-                      },
-                    ]}
-                  />
-                ))}
-              </View>
-
               <View
                 style={[
                   styles.reelCaption,
@@ -353,18 +325,18 @@ const styles = StyleSheet.create({
   },
   showcaseZone: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingBottom: spacing.md,
+    paddingTop: 28,
+    paddingBottom: 8,
   },
   reelCard: {
-    width: 232,
-    height: 372,
-    borderRadius: 30,
+    alignSelf: 'stretch',
+    flex: 1,
+    minHeight: 220,
+    borderRadius: 28,
     overflow: 'hidden',
     alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingBottom: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
     shadowColor: '#000',
     shadowOpacity: 0.55,
     shadowRadius: 30,
@@ -372,44 +344,15 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: 'rgba(255,255,255,0.10)',
   },
-  avatarGlow: {
-    position: 'absolute',
-    top: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarRing: {
-    width: 158,
-    height: 158,
-    borderRadius: 79,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
-  },
-  waveRow: {
-    position: 'absolute',
-    top: 222,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: 44,
-  },
-  waveBar: {
-    width: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,213,46,0.7)',
-  },
   reelCaption: {
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    maxWidth: 200,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    maxWidth: 300,
   },
   reelCaptionText: {
-    fontSize: 15,
+    fontSize: 26,
+    lineHeight: 34,
     fontFamily: fonts.bold,
     textAlign: 'center',
     textShadowRadius: 6,
