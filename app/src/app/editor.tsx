@@ -1,4 +1,5 @@
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useEvent } from 'expo';
@@ -115,8 +116,16 @@ export default function EditorScreen() {
       ) : (
         <View style={[StyleSheet.absoluteFill, styles.demoBackdrop]} />
       )}
-      <View style={styles.topScrim} pointerEvents="none" />
-      <View style={styles.bottomScrim} pointerEvents="none" />
+      <LinearGradient
+        colors={['rgba(0,0,0,0.55)', 'transparent']}
+        style={styles.topScrim}
+        pointerEvents="none"
+      />
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.45)', 'rgba(0,0,0,0.75)']}
+        style={styles.bottomScrim}
+        pointerEvents="none"
+      />
 
       <SafeAreaView style={styles.chrome} edges={['top', 'bottom']}>
         {/* floating top bar */}
@@ -270,15 +279,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 140,
-    backgroundColor: 'transparent',
   },
   bottomScrim: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: 360,
-    backgroundColor: 'rgba(0,0,0,0.001)',
+    height: 380,
   },
   chrome: { flex: 1 },
   topBar: {
