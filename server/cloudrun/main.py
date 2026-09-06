@@ -6,7 +6,7 @@ Flow (the app never streams video through this service):
   POST /transcribe  {api_key, media_id}           -> {segments, duration, media_id}
   POST /burn        {api_key, media_id, template, lines, quality, font_size}
                                                   -> {download_url, bytes}   signed GET to Cloud Storage
-  GET  /healthz
+  GET  /health
 Media lives in the bucket under src/ and out/; a bucket lifecycle rule deletes it after 1 day.
 """
 import os
@@ -114,7 +114,7 @@ def _valid_media_id(body: dict) -> str | None:
 
 
 # ---- endpoints -------------------------------------------------------------------
-@app.get("/healthz")
+@app.get("/health")  # not /healthz: Google's frontend intercepts that path and answers 404 itself
 def healthz():
     return {"ok": True, "model_loaded": _model is not None, "bucket": bool(BUCKET)}
 
