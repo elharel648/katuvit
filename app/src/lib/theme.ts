@@ -1,9 +1,9 @@
 /** Katuvit design language — dark studio, one warm accent, Hebrew-first type */
 export const colors = {
-  bg: '#0A0A0C',
-  surface: '#16161A',
-  surfaceRaised: '#1F1F24',
-  border: '#26262C',
+  bg: '#0B0E17',
+  surface: '#131829',
+  surfaceRaised: '#1B2136',
+  border: 'rgba(255,255,255,0.07)',
   text: '#F5F5F7',
   textDim: '#9C9CA4',
   textFaint: '#5E5E66',

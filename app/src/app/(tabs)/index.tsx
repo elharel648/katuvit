@@ -1,3 +1,4 @@
+import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -9,7 +10,6 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -18,39 +18,31 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { uploadAndTranscribe } from '@/lib/api';
 import { getSession, startSession } from '@/lib/session';
+import { TEMPLATES } from '@/lib/templates';
 import { colors, fonts, radius, spacing } from '@/lib/theme';
 
 type Phase = 'idle' | 'uploading';
 
-function ActionCircle({
-  symbol,
-  label,
-  onPress,
-  busy,
-}: {
-  symbol: string;
-  label: string;
-  onPress: () => void;
-  busy?: boolean;
-}) {
-  return (
-    <Pressable style={styles.actionItem} onPress={onPress} disabled={busy}>
-      <View style={styles.actionCircle}>
-        {busy ? (
-          <ActivityIndicator color={colors.onAccent} />
-        ) : (
-          <SymbolView name={symbol as never} size={24} tintColor={colors.onAccent} />
-        )}
-      </View>
-      <Text style={styles.actionLabel}>{label}</Text>
-    </Pressable>
-  );
-}
+/** the product demos itself: one specimen line, cycling through real styles */
+const SPECIMEN_LINES = [
+  'רילס נכנס. כתוביות יוצאות.',
+  'גם כשעוברים באמצע ל-English',
+  'כל מילה. מדויק. על המסך.',
+];
 
 export default function HomeScreen() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [lastThumb, setLastThumb] = useState<string | null>(null);
+  const [specimenIdx, setSpecimenIdx] = useState(0);
   const session = getSession();
+
+  useEffect(() => {
+    const t = setInterval(
+      () => setSpecimenIdx((i) => (i + 1) % (SPECIMEN_LINES.length * TEMPLATES.length)),
+      2200,
+    );
+    return () => clearInterval(t);
+  }, []);
 
   useEffect(() => {
     if (!session?.videoUri) return;
@@ -83,257 +75,305 @@ export default function HomeScreen() {
     }
   };
 
+  const template = TEMPLATES[specimenIdx % TEMPLATES.length];
+  const line = SPECIMEN_LINES[specimenIdx % SPECIMEN_LINES.length];
   const firstLine = session?.segments?.[0]?.text ?? '';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
-        {/* header: wordmark + Pro pill */}
-        <View style={styles.header}>
-          <Text style={styles.wordmark}>כתוביות</Text>
-          <Pressable
-            style={styles.proPill}
-            onPress={() => Alert.alert('Pro', 'מסלול Pro נפתח בקרוב 🙂')}
-          >
-            <SymbolView name="crown.fill" size={13} tintColor={colors.onAccent} />
-            <Text style={styles.proPillText}>שדרוג ל-Pro</Text>
-          </Pressable>
-        </View>
+      {/* header */}
+      <View style={styles.header}>
+        <Text style={styles.wordmark}>כתוביות</Text>
+        <Pressable onPress={() => Alert.alert('Pro', 'מסלול Pro נפתח בקרוב')}>
+          <BlurView intensity={30} tint="dark" style={styles.proPill}>
+            <SymbolView name="crown.fill" size={13} tintColor={colors.accent} />
+            <Text style={styles.proPillText}>Pro</Text>
+          </BlurView>
+        </Pressable>
+      </View>
 
-        {/* hero: the latest video as the card */}
-        {session && lastThumb ? (
-          <Pressable
-            style={styles.heroCard}
-            onPress={() => router.push('/editor')}
-          >
-            <Image
-              source={{ uri: lastThumb }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-            />
-            <LinearGradient
-              colors={['transparent', 'rgba(0,0,0,0.75)']}
-              style={styles.heroScrim}
-            />
+      {/* hero */}
+      {session && lastThumb ? (
+        <Pressable style={styles.hero} onPress={() => router.push('/editor')}>
+          <Image
+            source={{ uri: lastThumb }}
+            style={StyleSheet.absoluteFill}
+            contentFit="cover"
+          />
+          <LinearGradient
+            colors={['rgba(11,14,23,0.1)', 'rgba(11,14,23,0.88)']}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.heroContent}>
             {firstLine !== '' && (
-              <Text style={styles.heroCaption}>{firstLine}</Text>
+              <Text style={styles.heroCaptionOnVideo}>{firstLine}</Text>
             )}
-            <View style={styles.heroFooter}>
-              <View style={styles.heroBadge}>
+            <View style={styles.heroMetaRow}>
+              <BlurView intensity={25} tint="dark" style={styles.glassChip}>
                 <SymbolView
                   name="checkmark.circle.fill"
                   size={13}
                   tintColor={colors.accent}
                 />
-                <Text style={styles.heroBadgeText}>תומלל · מוכן לעריכה</Text>
-              </View>
-              <View style={styles.heroPlay}>
-                <SymbolView name="play.fill" size={14} tintColor={colors.onAccent} />
-              </View>
+                <Text style={styles.glassChipText}>
+                  תומלל · {Math.round(session.duration)} שניות
+                </Text>
+              </BlurView>
+              <Text style={styles.heroLink}>המשך עריכה ‹</Text>
             </View>
-          </Pressable>
-        ) : (
-          <View style={styles.heroCard}>
-            <LinearGradient
-              colors={['#1E1E24', '#101014']}
-              style={StyleSheet.absoluteFill}
-            />
-            <View style={styles.emptyHeroInner}>
-              <View style={styles.emptyCaptionChip}>
-                <Text style={styles.emptyCaptionText}>כל מילה על המסך</Text>
-              </View>
-              <Text style={styles.emptyHeroSub}>
-                הסרטון הראשון שלך יופיע כאן —{'\n'}עם כתוביות מדויקות בעברית
-                ובאנגלית
+          </View>
+        </Pressable>
+      ) : (
+        <View style={styles.hero}>
+          {/* cinematic backdrop: layered gradients, no dead flat box */}
+          <LinearGradient
+            colors={['#1A2140', '#0E1220', '#0B0E17']}
+            start={{ x: 0.2, y: 0 }}
+            end={{ x: 0.8, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <LinearGradient
+            colors={['transparent', 'rgba(255,213,46,0.05)', 'transparent']}
+            start={{ x: 0, y: 0.3 }}
+            end={{ x: 1, y: 0.7 }}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={styles.specimenZone}>
+            <View
+              style={[
+                styles.specimenChip,
+                {
+                  backgroundColor: template.backgroundColor ?? 'transparent',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.specimenText,
+                  {
+                    color: template.textColor,
+                    textShadowColor: template.backgroundColor
+                      ? 'transparent'
+                      : template.outlineColor,
+                  },
+                ]}
+              >
+                {line}
               </Text>
             </View>
+            <Text style={styles.specimenStyleName}>סגנון · {template.name}</Text>
           </View>
-        )}
-
-        {/* action circles */}
-        <View style={styles.actionsRow}>
-          <ActionCircle
-            symbol="plus"
-            label="סרטון חדש"
-            onPress={pickAndTranscribe}
-            busy={phase === 'uploading'}
-          />
-          <ActionCircle
-            symbol="wand.and.stars"
-            label="דמו עורך"
-            onPress={() => router.push('/editor')}
-          />
-          <ActionCircle
-            symbol="square.and.arrow.up"
-            label="ייצוא אחרון"
-            onPress={() =>
-              Alert.alert('ייצוא', 'שרת הצריבה מתחבר ממש בקרוב 🎬')
-            }
-          />
-        </View>
-
-        {/* quick facts strip */}
-        <View style={styles.factsCard}>
-          <View style={styles.factRow}>
-            <SymbolView name="bolt.fill" size={15} tintColor={colors.accent} />
-            <Text style={styles.factText}>תמלול תוך שניות, גם עברית-אנגלית מעורבת</Text>
-          </View>
-          <View style={styles.factDivider} />
-          <View style={styles.factRow}>
-            <SymbolView name="lock.fill" size={15} tintColor={colors.accent} />
-            <Text style={styles.factText}>הסרטון נמחק מהשרת עד 24 שעות</Text>
-          </View>
-          <View style={styles.factDivider} />
-          <View style={styles.factRow}>
-            <SymbolView name="textformat" size={15} tintColor={colors.accent} />
-            <Text style={styles.factText}>5 סגנונות כתוביות, RTL מושלם</Text>
+          <View style={styles.heroFootnoteWrap}>
+            <Text style={styles.heroFootnote}>
+              ככה ייראו הכתוביות על הסרטון שלך
+            </Text>
           </View>
         </View>
-      </ScrollView>
+      )}
+
+      {/* actions: one yellow primary, glass secondaries */}
+      <View style={styles.actionsRow}>
+        <Pressable style={styles.actionItem} onPress={() => router.push('/editor')}>
+          <BlurView intensity={30} tint="dark" style={styles.glassCircle}>
+            <SymbolView
+              name="wand.and.stars"
+              size={22}
+              tintColor="rgba(255,255,255,0.85)"
+            />
+          </BlurView>
+          <Text style={styles.actionLabel}>דמו</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.actionItem}
+          onPress={pickAndTranscribe}
+          disabled={phase === 'uploading'}
+        >
+          <View style={styles.primaryCircle}>
+            {phase === 'uploading' ? (
+              <ActivityIndicator color={colors.onAccent} />
+            ) : (
+              <SymbolView name="plus" size={30} tintColor={colors.onAccent} />
+            )}
+          </View>
+          <Text style={[styles.actionLabel, styles.actionLabelPrimary]}>
+            {phase === 'uploading' ? 'מתמלל…' : 'סרטון חדש'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.actionItem}
+          onPress={() => router.push('/projects')}
+        >
+          <BlurView intensity={30} tint="dark" style={styles.glassCircle}>
+            <SymbolView
+              name="film.stack"
+              size={22}
+              tintColor="rgba(255,255,255,0.85)"
+            />
+          </BlurView>
+          <Text style={styles.actionLabel}>הסרטונים</Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.footnote}>
+        עברית ואנגלית באותו משפט · הסרטון נמחק מהשרת עד 24 שעות
+      </Text>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  scroll: { padding: spacing.md, gap: spacing.md, paddingBottom: spacing.lg },
   header: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
-  wordmark: { color: colors.text, fontSize: 26, fontFamily: fonts.black },
+  wordmark: { color: colors.text, fontSize: 24, fontFamily: fonts.black },
   proPill: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.accent,
     borderRadius: 999,
     paddingHorizontal: 14,
-    height: 36,
+    height: 34,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
   proPillText: {
-    color: colors.onAccent,
+    color: colors.text,
     fontSize: 13,
     fontFamily: fonts.bold,
   },
-  heroCard: {
-    height: 400,
-    borderRadius: radius.lg + 6,
+  hero: {
+    flex: 1,
+    marginHorizontal: spacing.md,
+    borderRadius: radius.lg + 8,
     overflow: 'hidden',
-    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.07)',
   },
-  heroScrim: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 160,
+  heroContent: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    padding: spacing.md,
+    gap: spacing.md,
   },
-  heroCaption: {
-    position: 'absolute',
-    bottom: 70,
-    left: 16,
-    right: 16,
+  heroCaptionOnVideo: {
     textAlign: 'center',
     color: '#FFFFFF',
-    fontSize: 20,
+    fontSize: 22,
     fontFamily: fonts.bold,
     textShadowColor: 'rgba(0,0,0,0.9)',
     textShadowRadius: 8,
     textShadowOffset: { width: 0, height: 2 },
+    marginBottom: spacing.sm,
   },
-  heroFooter: {
-    position: 'absolute',
-    bottom: 14,
-    left: 14,
-    right: 14,
+  heroMetaRow: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  heroBadge: {
+  glassChip: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(10,10,12,0.6)',
     borderRadius: 999,
     paddingHorizontal: 12,
     height: 32,
+    overflow: 'hidden',
   },
-  heroBadgeText: {
+  glassChipText: {
     color: 'rgba(255,255,255,0.9)',
     fontSize: 12,
     fontFamily: fonts.medium,
   },
-  heroPlay: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
+  heroLink: {
+    color: colors.accent,
+    fontSize: 14,
+    fontFamily: fonts.bold,
   },
-  emptyHeroInner: {
+  specimenZone: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
-    padding: 24,
+    gap: 14,
+    paddingHorizontal: spacing.lg,
   },
-  emptyCaptionChip: {
-    backgroundColor: '#000000',
+  specimenChip: {
     borderRadius: 12,
-    paddingHorizontal: 18,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
-  emptyCaptionText: {
-    color: colors.accent,
-    fontSize: 21,
+  specimenText: {
+    fontSize: 27,
     fontFamily: fonts.bold,
-  },
-  emptyHeroSub: {
-    color: colors.textDim,
-    fontSize: 14,
-    lineHeight: 22,
-    fontFamily: fonts.regular,
     textAlign: 'center',
+    textShadowRadius: 10,
+    textShadowOffset: { width: 0, height: 2 },
   },
-  actionsRow: {
-    flexDirection: 'row-reverse',
-    justifyContent: 'space-around',
-    paddingVertical: spacing.xs,
-  },
-  actionItem: { alignItems: 'center', gap: 8 },
-  actionCircle: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  actionLabel: {
-    color: colors.text,
+  specimenStyleName: {
+    color: colors.textFaint,
     fontSize: 13,
     fontFamily: fonts.medium,
   },
-  factsCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  factRow: {
-    flexDirection: 'row-reverse',
+  heroFootnoteWrap: {
     alignItems: 'center',
-    gap: 10,
+    paddingBottom: spacing.md,
   },
-  factText: {
-    color: colors.textDim,
-    fontSize: 14,
+  heroFootnote: {
+    color: colors.textFaint,
+    fontSize: 12,
     fontFamily: fonts.regular,
   },
-  factDivider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  actionsRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    gap: spacing.xl,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  actionItem: { alignItems: 'center', gap: 8, width: 76 },
+  primaryCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  glassCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginTop: 6,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  actionLabel: {
+    color: colors.textDim,
+    fontSize: 12,
+    fontFamily: fonts.medium,
+  },
+  actionLabelPrimary: { color: colors.text, fontFamily: fonts.bold },
+  footnote: {
+    color: colors.textFaint,
+    fontSize: 11,
+    fontFamily: fonts.regular,
+    textAlign: 'center',
+    paddingBottom: spacing.sm,
+  },
 });
