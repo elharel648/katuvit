@@ -1,10 +1,14 @@
+import { BlurView } from 'expo-blur';
+import { router } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { useEvent } from 'expo';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Image } from 'expo-image';
-import { router } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FlatList,
+  Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,14 +17,33 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import demoTranscript from '@/fixtures/transcript-demo.json';
-import { formatTime, splitIntoLines } from '@/lib/captions';
+import { splitIntoLines } from '@/lib/captions';
 import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
-import { colors, fonts, radius, spacing } from '@/lib/theme';
-import type { CaptionLine, TranscriptSegment } from '@/lib/types';
+import { fonts } from '@/lib/theme';
+import type { CaptionLine, CaptionTemplate, TranscriptSegment } from '@/lib/types';
+
+/** how the active caption is painted on the video, per template */
+function captionStyleFor(t: CaptionTemplate) {
+  return {
+    chip: {
+      backgroundColor: t.backgroundColor ?? 'transparent',
+      borderRadius: 10,
+      paddingHorizontal: t.backgroundColor ? 14 : 4,
+      paddingVertical: t.backgroundColor ? 6 : 0,
+    },
+    text: {
+      color: t.textColor,
+      textShadowColor: t.backgroundColor ? 'transparent' : t.outlineColor,
+      textShadowRadius: t.backgroundColor ? 0 : 8,
+      textShadowOffset: { width: 0, height: 2 },
+    },
+  };
+}
 
 export default function EditorScreen() {
   const session = getSession();
+  const videoUri = session?.videoUri ?? null;
 
   const initialLines = useMemo(() => {
     const segments =
@@ -31,281 +54,374 @@ export default function EditorScreen() {
   const [lines, setLines] = useState<CaptionLine[]>(initialLines);
   const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
   const [thumbnail, setThumbnail] = useState<string | null>(null);
+  const [activeLineId, setActiveLineId] = useState<string>(initialLines[0]?.id);
+  const [editingLine, setEditingLine] = useState<CaptionLine | null>(null);
+
+  const pillScrollRef = useRef<ScrollView>(null);
+
+  const player = useVideoPlayer(videoUri, (p) => {
+    p.loop = true;
+    p.timeUpdateEventInterval = 0.15;
+    p.play();
+  });
+  useEvent(player, 'timeUpdate');
+  const currentTime = player.currentTime;
+
+  // active line follows playback
+  useEffect(() => {
+    const active =
+      lines.find((l) => currentTime >= l.start && currentTime < l.end + 0.15) ??
+      null;
+    if (active && active.id !== activeLineId) setActiveLineId(active.id);
+  }, [currentTime, lines, activeLineId]);
 
   useEffect(() => {
-    if (!session?.videoUri) return;
-    VideoThumbnails.getThumbnailAsync(session.videoUri, { time: 500 })
+    if (!videoUri) return;
+    VideoThumbnails.getThumbnailAsync(videoUri, { time: 800 })
       .then((r) => setThumbnail(r.uri))
       .catch(() => {});
-  }, [session?.videoUri]);
-
-  const editLine = (id: string, text: string) => {
-    setLines((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, text, edited: true } : l)),
-    );
-  };
+  }, [videoUri]);
 
   const activeTemplate = TEMPLATES.find((t) => t.id === templateId)!;
-  const editedCount = lines.filter((l) => l.edited).length;
-  const durationLabel = session
-    ? `${Math.round(session.duration)} שניות`
-    : 'סרטון דמו';
+  const capStyle = captionStyleFor(activeTemplate);
+  const activeLine = lines.find((l) => l.id === activeLineId) ?? null;
+
+  const seekTo = (line: CaptionLine) => {
+    player.currentTime = line.start;
+    setActiveLineId(line.id);
+    if (!player.playing) player.play();
+  };
+
+  const saveEdit = (text: string) => {
+    if (!editingLine) return;
+    setLines((prev) =>
+      prev.map((l) =>
+        l.id === editingLine.id ? { ...l, text, edited: true } : l,
+      ),
+    );
+    setEditingLine(null);
+  };
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      {/* header: back + video context */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Text style={styles.back}>‹</Text>
-        </Pressable>
-        <View style={styles.headerText}>
-          <Text style={styles.title}>עריכת כתוביות</Text>
-          <Text style={styles.subtitle}>
-            {durationLabel} · {lines.length} שורות
-            {editedCount > 0 ? ` · ${editedCount} תוקנו` : ''}
-          </Text>
-        </View>
-        {thumbnail ? (
-          <Image source={{ uri: thumbnail }} style={styles.thumb} />
-        ) : (
-          <View style={[styles.thumb, styles.thumbPlaceholder]}>
-            <Text style={styles.thumbGlyph}>🎬</Text>
-          </View>
-        )}
-      </View>
+    <View style={styles.screen}>
+      {/* the video IS the interface */}
+      {videoUri ? (
+        <VideoView
+          player={player}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          nativeControls={false}
+        />
+      ) : (
+        <View style={[StyleSheet.absoluteFill, styles.demoBackdrop]} />
+      )}
+      <View style={styles.topScrim} pointerEvents="none" />
+      <View style={styles.bottomScrim} pointerEvents="none" />
 
-      {/* live style preview of the active template */}
-      <View style={styles.previewBar}>
-        <View
-          style={[
-            styles.previewChip,
-            {
-              backgroundColor:
-                activeTemplate.backgroundColor ?? 'transparent',
-            },
-          ]}
+      <SafeAreaView style={styles.chrome} edges={['top', 'bottom']}>
+        {/* floating top bar */}
+        <View style={styles.topBar}>
+          <Pressable onPress={() => router.back()}>
+            <BlurView intensity={40} tint="dark" style={styles.roundButton}>
+              <Text style={styles.backGlyph}>‹</Text>
+            </BlurView>
+          </Pressable>
+          <Text style={styles.topTitle}>
+            {session ? 'הסרטון שלך' : 'סרטון דמו'}
+          </Text>
+          <View style={styles.roundButtonPlaceholder} />
+        </View>
+
+        <View style={styles.flexSpacer} />
+
+        {/* the live caption — tap to edit */}
+        <Pressable
+          style={styles.captionZone}
+          onPress={() => activeLine && setEditingLine(activeLine)}
         >
-          <Text
-            style={[
-              styles.previewText,
-              {
-                color: activeTemplate.textColor,
-                textShadowColor: activeTemplate.outlineColor,
-              },
-            ]}
-          >
-            {lines[0]?.text ?? 'תצוגה מקדימה'}
-          </Text>
-        </View>
-      </View>
-
-      <FlatList
-        data={lines}
-        keyExtractor={(l) => l.id}
-        contentContainerStyle={styles.list}
-        renderItem={({ item }) => (
-          <View style={styles.lineRow}>
-            <TextInput
-              value={item.text}
-              onChangeText={(t) => editLine(item.id, t)}
-              style={styles.lineInput}
-              multiline
-              textAlign="right"
-            />
-            <View style={styles.lineMeta}>
-              <Text style={styles.timeText}>{formatTime(item.start)}</Text>
-              {item.edited && <View style={styles.editedDot} />}
+          {activeLine && (
+            <View style={capStyle.chip}>
+              <Text style={[styles.captionText, capStyle.text]}>
+                {activeLine.text}
+              </Text>
             </View>
-          </View>
-        )}
-      />
+          )}
+        </Pressable>
 
-      <View style={styles.footer}>
-        <FlatList
+        {/* line timeline */}
+        <ScrollView
+          ref={pillScrollRef}
           horizontal
-          inverted
-          data={TEMPLATES}
-          keyExtractor={(t) => t.id}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.templates}
-          renderItem={({ item }) => {
-            const active = templateId === item.id;
+          contentContainerStyle={styles.pills}
+          style={styles.pillsScroll}
+        >
+          {lines.map((line) => {
+            const active = line.id === activeLineId;
             return (
-              <Pressable
-                onPress={() => setTemplateId(item.id)}
-                style={[styles.templateChip, active && styles.templateActive]}
-              >
-                <View
-                  style={[
-                    styles.templateSwatch,
-                    { backgroundColor: item.backgroundColor ?? '#00000055' },
-                  ]}
+              <Pressable key={line.id} onPress={() => seekTo(line)}>
+                <BlurView
+                  intensity={active ? 0 : 30}
+                  tint="dark"
+                  style={[styles.pill, active && styles.pillActive]}
                 >
                   <Text
-                    style={[
-                      styles.templateGlyph,
-                      {
-                        color: item.textColor,
-                        textShadowColor: item.outlineColor,
-                      },
-                    ]}
+                    style={[styles.pillText, active && styles.pillTextActive]}
+                    numberOfLines={1}
                   >
-                    אב
+                    {line.text}
                   </Text>
+                  {line.edited && <View style={styles.editedDot} />}
+                </BlurView>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+
+        {/* style cards: your frame, each style on it */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.styleRow}
+          style={styles.styleScroll}
+        >
+          {TEMPLATES.map((t) => {
+            const active = t.id === templateId;
+            const s = captionStyleFor(t);
+            return (
+              <Pressable
+                key={t.id}
+                onPress={() => setTemplateId(t.id)}
+                style={styles.styleCardWrap}
+              >
+                <View
+                  style={[styles.styleCard, active && styles.styleCardActive]}
+                >
+                  {thumbnail ? (
+                    <Image
+                      source={{ uri: thumbnail }}
+                      style={StyleSheet.absoluteFill}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View
+                      style={[StyleSheet.absoluteFill, styles.demoBackdrop]}
+                    />
+                  )}
+                  <View style={styles.styleCardCaption}>
+                    <View style={[s.chip, styles.styleCardChip]}>
+                      <Text style={[styles.styleCardText, s.text]}>שלום</Text>
+                    </View>
+                  </View>
                 </View>
                 <Text
-                  style={[styles.templateName, active && styles.templateNameActive]}
+                  style={[styles.styleName, active && styles.styleNameActive]}
                 >
-                  {item.name}
+                  {t.name}
                 </Text>
               </Pressable>
             );
-          }}
-        />
+          })}
+        </ScrollView>
+
+        {/* single floating action */}
         <Pressable style={styles.export} disabled>
-          <Text style={styles.exportText}>ייצוא סרטון עם כתוביות</Text>
-          <Text style={styles.exportHint}>בקרוב — מתחבר לשרת הצריבה</Text>
+          <Text style={styles.exportText}>ייצוא הסרטון</Text>
         </Pressable>
-      </View>
-    </SafeAreaView>
+      </SafeAreaView>
+
+      {/* edit sheet */}
+      <Modal
+        visible={editingLine !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditingLine(null)}
+      >
+        <Pressable
+          style={styles.sheetBackdrop}
+          onPress={() => setEditingLine(null)}
+        >
+          <Pressable style={styles.sheet} onPress={() => {}}>
+            <Text style={styles.sheetTitle}>תיקון שורה</Text>
+            <TextInput
+              defaultValue={editingLine?.text}
+              autoFocus
+              multiline
+              style={styles.sheetInput}
+              textAlign="right"
+              onSubmitEditing={(e) => saveEdit(e.nativeEvent.text)}
+              blurOnSubmit
+              returnKeyType="done"
+            />
+            <Text style={styles.sheetHint}>אנטר לשמירה · הקשה בחוץ לביטול</Text>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  header: {
+  screen: { flex: 1, backgroundColor: '#000000' },
+  demoBackdrop: { backgroundColor: '#101014' },
+  topScrim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 140,
+    backgroundColor: 'transparent',
+  },
+  bottomScrim: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 360,
+    backgroundColor: 'rgba(0,0,0,0.001)',
+  },
+  chrome: { flex: 1 },
+  topBar: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 6,
   },
-  back: {
-    color: colors.textDim,
-    fontSize: 34,
+  roundButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20,20,24,0.35)',
+  },
+  roundButtonPlaceholder: { width: 44, height: 44 },
+  backGlyph: {
+    color: '#FFFFFF',
+    fontSize: 30,
     fontFamily: fonts.regular,
     transform: [{ scaleX: -1 }],
-    marginTop: -4,
+    marginTop: -3,
   },
-  headerText: { flex: 1, alignItems: 'flex-end' },
-  title: { color: colors.text, fontFamily: fonts.bold, fontSize: 20 },
-  subtitle: {
-    color: colors.textFaint,
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    marginTop: 2,
+  topTitle: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 14,
+    fontFamily: fonts.medium,
   },
-  thumb: {
-    width: 44,
-    height: 58,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceRaised,
-  },
-  thumbPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  thumbGlyph: { fontSize: 20 },
-  previewBar: {
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-    borderRadius: radius.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: spacing.md,
+  flexSpacer: { flex: 1 },
+  captionZone: {
     alignItems: 'center',
+    justifyContent: 'flex-end',
     minHeight: 64,
-    justifyContent: 'center',
+    paddingHorizontal: 24,
+    marginBottom: 14,
   },
-  previewChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.sm,
-    maxWidth: '90%',
-  },
-  previewText: {
+  captionText: {
+    fontSize: 26,
     fontFamily: fonts.bold,
-    fontSize: 18,
     textAlign: 'center',
-    textShadowRadius: 4,
-    textShadowOffset: { width: 0, height: 1 },
   },
-  list: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: 8 },
-  lineRow: {
+  pillsScroll: { flexGrow: 0, marginBottom: 12 },
+  pills: { paddingHorizontal: 16, gap: 6, flexDirection: 'row-reverse' },
+  pill: {
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: 'rgba(20,20,24,0.45)',
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    gap: spacing.md,
+    gap: 6,
+    maxWidth: 200,
   },
-  lineInput: {
-    flex: 1,
-    color: colors.text,
+  pillActive: { backgroundColor: '#7C5CFF' },
+  pillText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
     fontFamily: fonts.medium,
-    fontSize: 17,
-    lineHeight: 24,
-    padding: 0,
-    writingDirection: 'rtl',
   },
-  lineMeta: { alignItems: 'center', gap: 4, width: 44 },
-  timeText: {
-    color: colors.textFaint,
-    fontFamily: fonts.regular,
-    fontSize: 11,
-    fontVariant: ['tabular-nums'],
-  },
+  pillTextActive: { color: '#FFFFFF', fontFamily: fonts.bold },
   editedDot: {
     width: 5,
     height: 5,
     borderRadius: 3,
-    backgroundColor: colors.success,
+    backgroundColor: '#4ADE80',
   },
-  footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
-    paddingTop: spacing.sm,
-    gap: spacing.sm,
+  styleScroll: { flexGrow: 0, marginBottom: 14 },
+  styleRow: { paddingHorizontal: 16, gap: 10, flexDirection: 'row-reverse' },
+  styleCardWrap: { alignItems: 'center', gap: 5 },
+  styleCard: {
+    width: 74,
+    height: 98,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#101014',
   },
-  templates: { paddingHorizontal: spacing.md, gap: spacing.sm },
-  templateChip: { alignItems: 'center', gap: 4, opacity: 0.55 },
-  templateActive: { opacity: 1 },
-  templateSwatch: {
-    width: 62,
-    height: 42,
-    borderRadius: radius.sm,
+  styleCardActive: {
+    borderWidth: 2,
+    borderColor: '#9B82FF',
+  },
+  styleCardCaption: {
+    position: 'absolute',
+    bottom: 8,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  styleCardChip: { borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 },
+  styleCardText: { fontSize: 11, fontFamily: fonts.bold },
+  styleName: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    fontFamily: fonts.regular,
+  },
+  styleNameActive: { color: '#FFFFFF', fontFamily: fonts.medium },
+  export: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    height: 54,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
+    opacity: 0.55,
   },
-  templateGlyph: {
+  exportText: { color: '#0A0A0A', fontSize: 16, fontFamily: fonts.bold },
+  sheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#141418',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 48,
+    gap: 12,
+  },
+  sheetTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
     fontFamily: fonts.bold,
-    fontSize: 18,
-    textShadowRadius: 3,
-    textShadowOffset: { width: 0, height: 0 },
+    textAlign: 'right',
   },
-  templateName: {
-    color: colors.textDim,
-    fontFamily: fonts.regular,
+  sheetInput: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontFamily: fonts.medium,
+    backgroundColor: '#1E1E24',
+    borderRadius: 14,
+    padding: 16,
+    minHeight: 60,
+    writingDirection: 'rtl',
+  },
+  sheetHint: {
+    color: 'rgba(255,255,255,0.4)',
     fontSize: 12,
-  },
-  templateNameActive: { color: colors.text, fontFamily: fonts.medium },
-  export: {
-    marginHorizontal: spacing.md,
-    marginBottom: 4,
-    backgroundColor: colors.accent,
-    opacity: 0.5,
-    borderRadius: radius.lg,
-    paddingVertical: 13,
-    alignItems: 'center',
-  },
-  exportText: { color: colors.text, fontFamily: fonts.bold, fontSize: 16 },
-  exportHint: {
-    color: '#FFFFFF99',
     fontFamily: fonts.regular,
-    fontSize: 11,
-    marginTop: 1,
+    textAlign: 'center',
   },
 });
