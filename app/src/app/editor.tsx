@@ -502,14 +502,13 @@ export default function EditorScreen() {
     if (!editingLine) return;
     commit((prev) => adjustLineDuration(prev, editingLine.id, delta));
   };
+  // the button says what it does and how much; it disappears when there is nothing to clean
+  const fillerCount = useMemo(() => removeFillers(lines).removed, [lines]);
   const doCleanFillers = () => {
-    let removed = 0;
     commit((prev) => {
       const r = removeFillers(prev);
-      removed = r.removed;
       return r.removed ? r.lines : prev;
     });
-    setTimeout(() => Alert.alert(removed ? `הוסרו ${removed} מילות מילוי` : 'אין מילות מילוי', ''), 50);
   };
 
   return (
@@ -537,11 +536,21 @@ export default function EditorScreen() {
             </Text>
           </BlurView>
           <View style={styles.topActions}>
-            <Pressable onPress={doCleanFillers} hitSlop={8} accessibilityRole="button" accessibilityLabel="ניקוי מילות מילוי">
-              <BlurView intensity={40} tint="dark" style={styles.roundButton}>
-                <SymbolView name="sparkles" size={16} tintColor="#FFFFFF" />
-              </BlurView>
-            </Pressable>
+            {fillerCount > 0 && (
+              <Pressable
+                onPress={doCleanFillers}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`ניקוי ${fillerCount} מילות מילוי`}
+              >
+                <BlurView intensity={40} tint="dark" style={styles.cleanPill}>
+                  <SymbolView name="sparkles" size={14} tintColor={colors.accent} />
+                  <Text style={styles.cleanPillText}>
+                    {fillerCount === 1 ? 'ניקוי מילת מילוי' : `ניקוי ${fillerCount} מילות מילוי`}
+                  </Text>
+                </BlurView>
+              </Pressable>
+            )}
             <Pressable onPress={undo} disabled={!canUndo} hitSlop={8} accessibilityRole="button" accessibilityLabel="ביטול">
               <BlurView intensity={40} tint="dark" style={[styles.roundButton, !canUndo && styles.roundButtonDisabled]}>
                 <SymbolView name="arrow.uturn.backward" size={16} tintColor="#FFFFFF" />
@@ -1214,7 +1223,17 @@ const styles = StyleSheet.create({
   },
   roundButtonPlaceholder: { width: 44, height: 44 },
   roundButtonDisabled: { opacity: 0.35 },
-  topActions: { flexDirection: 'row-reverse', gap: 8 },
+  topActions: { flexDirection: 'row-reverse', alignItems: 'center', gap: 8 },
+  cleanPill: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    height: 34,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  cleanPillText: { color: '#FFFFFF', fontSize: 13, fontFamily: fonts.medium },
   wordChips: { flexDirection: 'row-reverse', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-start', marginBottom: 2 },
   wordChipWrap: { flexDirection: 'row-reverse', alignItems: 'center', gap: 4 },
   wordChip: {
