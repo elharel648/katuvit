@@ -83,7 +83,7 @@ function RecentCard({ session }: { session: EditingSession }) {
       <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFill} />
       <View style={styles.recentBody}>
         <Text style={styles.recentLine} numberOfLines={2}>{firstLine}</Text>
-        <Text style={styles.recentAge}>{ageLabel(session)} · {Math.round(session.duration)} שנ׳</Text>
+        <Text style={styles.recentAge} numberOfLines={1}>{ageLabel(session)}</Text>
       </View>
     </Pressable>
   );
