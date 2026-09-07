@@ -17,13 +17,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { track } from '@/lib/analytics';
 import { startCreateFlow, useCreatePhase } from '@/lib/create-flow';
 import { quotaLabel, useEntitlements } from '@/lib/entitlements';
+import { ageLabel, removeSession, setCurrentSession, updateSession, useSessions, type EditingSession } from '@/lib/session';
 import { updateSettings, useSettings } from '@/lib/settings';
 import { accentHex } from '@/lib/templates';
-import { getSession } from '@/lib/session';
 import { TEMPLATES } from '@/lib/templates';
-import { colors, fonts, radius, spacing } from '@/lib/theme';
+import { colors, fonts, spacing } from '@/lib/theme';
 
 /** the product demos itself: one specimen line, cycling through real styles */
 // real mid-story speech, not copy: anything "about the app" reads like an ad here
@@ -52,13 +53,50 @@ const wavePulse = {
   '100%': { transform: [{ scaleY: 0.5 }] },
 };
 
+/** one recent video: thumbnail, first caption, age. tap = continue editing, long-press = remove */
+function RecentCard({ session }: { session: EditingSession }) {
+  useEffect(() => {
+    if (session.thumbUri) return;
+    VideoThumbnails.getThumbnailAsync(session.videoUri, { time: 800 })
+      .then((r) => updateSession(session.id, { thumbUri: r.uri }))
+      .catch(() => {});
+  }, [session.id, session.thumbUri, session.videoUri]);
+  const firstLine = session.lines?.[0]?.text ?? session.segments[0]?.text ?? '';
+  return (
+    <Pressable
+      style={styles.recentCard}
+      onPress={() => {
+        setCurrentSession(session.id);
+        track('session_reopened', { age_min: Math.round((Date.now() - session.createdAt) / 60000) });
+        router.push('/editor');
+      }}
+      onLongPress={() =>
+        Alert.alert('להסיר את הסרטון מהרשימה?', 'הייצואים שכבר שמרתם בגלריה נשארים.', [
+          { text: 'ביטול', style: 'cancel' },
+          { text: 'הסרה', style: 'destructive', onPress: () => removeSession(session.id) },
+        ])
+      }
+      accessibilityRole="button"
+      accessibilityLabel={`המשך עריכה: ${firstLine}`}
+    >
+      {session.thumbUri && <Image source={{ uri: session.thumbUri }} style={StyleSheet.absoluteFill} contentFit="cover" />}
+      <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.85)']} style={StyleSheet.absoluteFill} />
+      <View style={styles.recentBody}>
+        <Text style={styles.recentLine} numberOfLines={2}>{firstLine}</Text>
+        <Text style={styles.recentAge}>{ageLabel(session)} · {Math.round(session.duration)} שנ׳</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 export default function HomeScreen() {
-  const [lastThumb, setLastThumb] = useState<string | null>(null);
   const [specimenIdx, setSpecimenIdx] = useState(0);
+  const recent = useSessions();
+  const recentRef = useRef<ScrollView>(null);
+  const recentOpened = useRef(false);
   // RTL slider: the first look sits at the far right, so open it scrolled to the end once
   const looksRef = useRef<ScrollView>(null);
   const looksOpened = useRef(false);
-  const session = getSession();
   const create = useCreatePhase();
   const ent = useEntitlements();
   const settings = useSettings();
@@ -71,16 +109,8 @@ export default function HomeScreen() {
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    if (!session?.videoUri) return;
-    VideoThumbnails.getThumbnailAsync(session.videoUri, { time: 800 })
-      .then((r) => setLastThumb(r.uri))
-      .catch(() => {});
-  }, [session?.videoUri]);
-
   const template = TEMPLATES[specimenIdx % TEMPLATES.length];
   const line = SPECIMEN_LINES[specimenIdx % SPECIMEN_LINES.length];
-  const firstLine = session?.segments?.[0]?.text ?? '';
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -114,40 +144,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* hero */}
-      {session ? (
-        <Pressable style={styles.hero} onPress={() => router.push('/editor')}>
-          {lastThumb && (
-            <Image
-              source={{ uri: lastThumb }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-            />
-          )}
-          <LinearGradient
-            colors={['rgba(11,14,23,0.1)', 'rgba(11,14,23,0.88)']}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={styles.heroContent}>
-            {firstLine !== '' && (
-              <Text style={styles.heroCaptionOnVideo}>{firstLine}</Text>
-            )}
-            <View style={styles.heroMetaRow}>
-              <BlurView intensity={25} tint="dark" style={styles.glassChip}>
-                <SymbolView
-                  name="checkmark.circle.fill"
-                  size={13}
-                  tintColor={colors.accent}
-                />
-                <Text style={styles.glassChipText}>
-                  תומלל · {Math.round(session.duration)} שניות
-                </Text>
-              </BlurView>
-              <Text style={styles.heroLink}>המשך עריכה ‹</Text>
-            </View>
-          </View>
-        </Pressable>
-      ) : (
+      {/* your videos: the new-video tile, then whatever is still editable */}
         <View style={styles.emptyHero}>
           <Text style={styles.sectionTitle}>הסרטונים שלך</Text>
 
@@ -204,6 +201,29 @@ export default function HomeScreen() {
               </View>
             </Pressable>
           </View>
+
+          {recent.length > 0 && (
+            <>
+              <View style={styles.recentHeader}>
+                <Text style={styles.recentTitle}>לאחרונה</Text>
+                <Text style={styles.recentHint}>נשמרים 24 שעות</Text>
+              </View>
+              <ScrollView
+                ref={recentRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.recentScroll}
+                contentContainerStyle={styles.recentRow}
+                onContentSizeChange={() => {
+                  if (recentOpened.current) return;
+                  recentOpened.current = true;
+                  recentRef.current?.scrollToEnd({ animated: false });
+                }}
+              >
+                {recent.map((r) => <RecentCard key={r.id} session={r} />)}
+              </ScrollView>
+            </>
+          )}
 
           {/* the look the next video starts with */}
           <Text style={[styles.sectionTitle, styles.sectionTitleSpaced]}>סגנון הכתוביות</Text>
@@ -266,8 +286,6 @@ export default function HomeScreen() {
             })}
           </ScrollView>
         </View>
-      )}
-
     </SafeAreaView>
   );
 }
@@ -326,55 +344,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row-reverse',
   },
   progressFill: { height: 4, borderRadius: 2, backgroundColor: colors.accent },
-  hero: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    marginHorizontal: spacing.md,
-    borderRadius: radius.lg + 8,
-    overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(255,255,255,0.07)',
-  },
-  heroContent: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  heroCaptionOnVideo: {
-    textAlign: 'center',
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontFamily: fonts.bold,
-    textShadowColor: 'rgba(0,0,0,0.9)',
-    textShadowRadius: 8,
-    textShadowOffset: { width: 0, height: 2 },
-    marginBottom: spacing.sm,
-  },
-  heroMetaRow: {
+  recentHeader: {
     flexDirection: 'row-reverse',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
+    marginTop: 18,
+    marginBottom: 10,
   },
-  glassChip: {
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    gap: 6,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    height: 32,
+  recentTitle: { color: colors.text, fontSize: 15, fontFamily: fonts.bold },
+  recentHint: { color: colors.textFaint, fontSize: 12, fontFamily: fonts.regular },
+  recentScroll: { marginHorizontal: -spacing.md, flexGrow: 0 },
+  recentRow: { flexDirection: 'row-reverse', gap: 10, paddingHorizontal: spacing.md },
+  recentCard: {
+    width: 104,
+    height: 150,
+    borderRadius: 16,
     overflow: 'hidden',
+    backgroundColor: colors.surface,
+    justifyContent: 'flex-end',
   },
-  glassChipText: {
-    color: 'rgba(255,255,255,0.9)',
-    fontSize: 12,
-    fontFamily: fonts.medium,
-  },
-  heroLink: {
-    color: colors.accent,
-    fontSize: 14,
-    fontFamily: fonts.bold,
-  },
+  recentBody: { padding: 8, gap: 3 },
+  recentLine: { color: '#FFFFFF', fontSize: 12, fontFamily: fonts.bold, textAlign: 'right', lineHeight: 15 },
+  recentAge: { color: 'rgba(255,255,255,0.6)', fontSize: 10.5, fontFamily: fonts.regular, textAlign: 'right' },
   emptyHero: {
     flex: 1,
     paddingHorizontal: spacing.md,

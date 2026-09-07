@@ -3,6 +3,7 @@ import * as LegacyFS from 'expo-file-system/legacy';
 import { getIdToken } from './auth';
 import { KATUVIT_API_KEY, WORKER_BASE_URL } from './config';
 import { setEntitlements, type Entitlements } from './entitlements';
+import { getSettings } from './settings';
 import type { StyleChoice, TranscriptSegment, Word } from './types';
 
 /**
@@ -166,10 +167,29 @@ export async function uploadAndTranscribe(
   }
   callbacks.onUploaded?.();
 
-  // transcription of a 3-minute clip on a cold GPU can take a while
-  const result = await postJson<TranscribeResult>('/transcribe', { media_id: ticket.media_id }, 600_000);
+  // transcription of a 3-minute clip on a cold GPU can take a while.
+  // hints = the user's personal dictionary (names, brands) → Whisper's decoding prompt
+  const result = await postJson<TranscribeResult>(
+    '/transcribe',
+    { media_id: ticket.media_id, hints: getSettings().dictionary },
+    600_000,
+  );
   if (result.entitlements) setEntitlements(result.entitlements);
   return result;
+}
+
+/**
+ * Wake the GPU worker. It scales to zero when idle and takes most of a minute to load the model;
+ * called the moment the user opens the picker, so by the time they have chosen and trimmed a clip
+ * the server is already up. No auth needed, result ignored.
+ */
+export function warmServer() {
+  fetch(`${WORKER_BASE_URL}/health`).catch(() => {});
+}
+
+/** telemetry; see analytics.ts */
+export async function postEvent(name: string, props: Record<string, string | number | boolean>): Promise<void> {
+  await postJson('/event', { name, props, app: 'ios-0.1.0' }, 15_000);
 }
 
 export interface BurnParams {

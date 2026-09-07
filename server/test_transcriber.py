@@ -28,6 +28,12 @@ from captions import (  # noqa: E402
     strip_fillers,
     canvas_for,
     FORMATS,
+    drop_hallucinations,
+    sanitize_hints,
+    hints_prompt,
+    fix_prefix_gap,
+    merge_prefix_words,
+    DEFAULT_HINTS,
     quota_decision,
     FREE_LIFETIME_VIDEOS,
     PRO_MONTHLY_VIDEOS,
@@ -308,6 +314,44 @@ def test_platform_formats_scale_the_canvas():
     vf = video_filter(1080, "/tmp/c.ass", hdr=False, height=1080)
     assert vf.startswith("scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080,")
     assert video_filter(1080, "/tmp/c.ass", hdr=False).startswith("scale=1080:-2,")
+
+
+def test_hallucination_guard_drops_credits_and_loops_but_keeps_speech():
+    seg = lambda t, **k: {"start": 0, "end": 1, "text": t, "words": [], **k}
+    segs = [
+        seg("שלום, שמי יובל"),
+        seg("תודה רבה"),                                   # mid-clip, real (someone said thanks)
+        seg("כתוביות על ידי הקהילה"),                      # credits marker → gone
+        seg("אני אני אני", compression_ratio=3.1),          # Whisper's own repetition signal → gone
+        seg("...", no_speech_prob=0.95, avg_logprob=-1.4),  # silence → gone (and empty after norm)
+        seg("כן"), seg("כן"), seg("כן"), seg("כן"),          # 4 in a row → first two kept
+        seg("Subtitles by the Amara.org community"),
+        seg("תודה שצפיתם"),                                 # stock closing in the last two → gone
+    ]
+    out = drop_hallucinations(segs)
+    assert [s["text"] for s in out] == ["שלום, שמי יובל", "תודה רבה", "כן", "כן"]
+    assert all("no_speech_prob" not in s for s in out)
+    # the same closing phrase early in the clip with confident speech stays
+    assert len(drop_hallucinations([seg("תודה שצפיתם"), seg("ועכשיו לעניין"), seg("סיימנו"), seg("ביי ביי")])) == 4
+
+
+def test_hints_are_whitelisted_and_capped():
+    assert sanitize_hints(None) == [] and hints_prompt([], defaults=[]) is None
+    assert sanitize_hints(["יובל", "Katuvit", "יובל", " ", "a" * 40, "x;drop", "סנט-ג'ורג'", 7]) == ["יובל", "Katuvit", "סנט-ג'ורג'"]
+    assert len(sanitize_hints([f"w{i}" for i in range(100)])) == 40
+    assert hints_prompt(["יובל", "Katuvit"], defaults=[]) == "מילים: יובל, Katuvit."
+    p = hints_prompt(["יובל", "instagram"])
+    assert p.startswith("מילים: יובל, instagram, honestly") and p.count("nstagram") == 1   # user first, no dupes
+    assert hints_prompt([]).startswith("מילים: honestly") and len(DEFAULT_HINTS) < 60
+
+
+def test_hebrew_prefix_before_latin_word_is_joined():
+    assert fix_prefix_gap("פתחתי את ה -Instagram וראיתי את ה -post") == "פתחתי את ה-Instagram וראיתי את ה-post"
+    assert fix_prefix_gap("זה - לא קשור") == "זה - לא קשור"        # a real dash stays
+    words = [{"w": " את", "s": 0, "e": 0.2}, {"w": " ה", "s": 0.2, "e": 0.3}, {"w": " -Instagram", "s": 0.3, "e": 0.9}, {"w": " וראיתי", "s": 0.9, "e": 1.2}]
+    merged = merge_prefix_words(words)
+    assert [w["w"].strip() for w in merged] == ["את", "ה-Instagram", "וראיתי"]
+    assert merged[1]["s"] == 0.2 and merged[1]["e"] == 0.9
 
 
 def test_media_id_regex():

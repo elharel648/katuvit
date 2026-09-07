@@ -137,6 +137,26 @@ export default function SettingsScreen() {
         <Text style={styles.sectionHeader}>פרטיות</Text>
         <View style={styles.group}>
           <Row
+            symbol="character.book.closed.fill"
+            label="מילון אישי"
+            value={settings.dictionary.length ? `${settings.dictionary.length} מילים` : 'ריק'}
+            onPress={() =>
+              Alert.alert(
+                'מילון אישי',
+                settings.dictionary.length
+                  ? `מילים שלימדתם את המנוע (מ"החלפה בכל הסרטון"). הן נשלחות כרמז לתמלול הבא:\n\n${settings.dictionary.join(' · ')}`
+                  : 'לחיצה ארוכה על מילה בעורך ו"החלפה בכל הסרטון" מלמדת את המנוע שמות ומותגים. הם יופיעו כאן ויישלחו כרמז לתמלול הבא.',
+                settings.dictionary.length
+                  ? [
+                      { text: 'סגירה', style: 'cancel' },
+                      { text: 'ניקוי המילון', style: 'destructive', onPress: () => updateSettings({ dictionary: [] }) },
+                    ]
+                  : [{ text: 'הבנתי' }],
+              )
+            }
+          />
+          <View style={styles.divider} />
+          <Row
             symbol="lock.fill"
             label="שמירת סרטונים בשרת"
             value="נמחקים עד 24 שעות"

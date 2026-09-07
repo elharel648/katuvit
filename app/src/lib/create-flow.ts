@@ -4,7 +4,8 @@ import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 
-import { QuotaError, uploadAndTranscribe } from './api';
+import { track } from './analytics';
+import { QuotaError, uploadAndTranscribe, warmServer } from './api';
 import { startSession } from './session';
 
 export type CreatePhase = 'idle' | 'uploading' | 'transcribing';
@@ -29,6 +30,8 @@ function setState(patch: Partial<CreateState>) {
 /** the one create flow: pick → upload (with progress) → transcribe → editor. usable from anywhere. */
 export async function startCreateFlow() {
   if (state.phase !== 'idle') return;
+  warmServer(); // the GPU box wakes while the user is still choosing a clip
+  track('create_started');
 
   const picked = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ['videos'],
@@ -40,6 +43,7 @@ export async function startCreateFlow() {
   });
   if (picked.canceled || !picked.assets[0]) return;
   const asset = picked.assets[0];
+  track('create_picked', { seconds: Math.round((asset.duration ?? 0) / 1000) });
 
   // ImagePicker reports duration in ms; library picks are NOT limited by videoMaxDuration
   if (asset.duration && asset.duration / 1000 > MAX_SECONDS) {
@@ -59,11 +63,20 @@ export async function startCreateFlow() {
 
   setState({ phase: 'uploading', progress: 0 });
   try {
+    const t0 = Date.now();
     const result = await uploadAndTranscribe(asset.uri, {
       onProgress: (p) => setState({ progress: p }),
-      onUploaded: () => setState({ phase: 'transcribing', progress: 1 }),
+      onUploaded: () => {
+        setState({ phase: 'transcribing', progress: 1 });
+        track('upload_done', { ms: Date.now() - t0 });
+      },
     });
-    startSession({
+    track('transcribe_done', {
+      ms: Date.now() - t0,
+      segments: result.segments.length,
+      seconds: Math.round(result.duration),
+    });
+    await startSession({
       videoUri: asset.uri,
       segments: result.segments,
       duration: result.duration,
@@ -74,12 +87,14 @@ export async function startCreateFlow() {
     router.push('/editor');
   } catch (e) {
     if (e instanceof QuotaError) {
+      track('paywall_shown', { from: 'create' });
       setTimeout(() => router.push('/paywall'), 400);
       return;
     }
     // an instant server rejection lands while the picker sheet is still animating
     // away, and iOS silently drops alerts presented during a modal dismissal
     const message = e instanceof Error ? e.message : 'נסו שוב';
+    track('create_failed', { stage: state.phase, message: message.slice(0, 200) });
     setTimeout(() => Alert.alert('משהו השתבש', message), 600);
   } finally {
     setState({ phase: 'idle', progress: 0 });

@@ -352,6 +352,139 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return header + "".join(events)
 
 
+# ---- hallucination guard -------------------------------------------------------------------
+# Whisper invents these on silence / music / the fade-out at the end of a clip. Seeing one of them
+# in an export is the single most embarrassing thing the engine can do, so they are dropped.
+HALLUCINATION_PHRASES = {
+    "תודה שצפיתם", "תודה רבה שצפיתם", "תודה על הצפייה", "תודה שהקשבתם", "נתראה בפרק הבא",
+    "להתראות בפרק הבא", "המשך יבוא", "כתוביות", "תרגום וכתוביות", "תרגום", "סוף",
+    "thank you for watching", "thanks for watching", "thank you", "please subscribe", "subscribe",
+    "like and subscribe", "see you in the next video", "the end", "bye",
+}
+# substrings that are never speech (credits Whisper learned from subtitle files)
+HALLUCINATION_MARKERS = ("amara.org", "subtitles by", "translated by", "כתוביות על ידי", "תרגום על ידי",
+                         "כתוביות:", "תורגם על ידי", "www.")
+
+
+def _norm_text(text: str) -> str:
+    return re.sub(r"[^\w\s]", "", text, flags=re.UNICODE).strip().lower()
+
+
+def drop_hallucinations(segments: list[dict]) -> list[dict]:
+    """
+    Drop segments Whisper made up. Each segment may carry `no_speech_prob`, `avg_logprob`,
+    `compression_ratio` (faster-whisper's own signals); they are stripped from the result.
+    Rules, deliberately conservative — real speech must survive:
+      • a credits marker anywhere → drop
+      • a stock closing phrase in the LAST two segments, or anywhere with no_speech_prob ≥ 0.5 → drop
+      • Whisper's own repetition signal (compression_ratio > 2.4) → drop
+      • very likely silence (no_speech_prob > 0.85 and avg_logprob < -1.0) → drop
+      • the same text 3+ times in a row → keep the first two
+    """
+    kept: list[dict] = []
+    n = len(segments)
+    streak_text, streak = None, 0
+    for i, seg in enumerate(segments):
+        text = str(seg.get("text", "")).strip()
+        low = text.lower()
+        norm = _norm_text(text)
+        nsp = float(seg.get("no_speech_prob") or 0.0)
+        alp = float(seg.get("avg_logprob") or 0.0)
+        cr = float(seg.get("compression_ratio") or 0.0)
+        if not norm:
+            continue
+        if any(m in low for m in HALLUCINATION_MARKERS):
+            continue
+        if norm in HALLUCINATION_PHRASES and (i >= n - 2 or nsp >= 0.5):
+            continue
+        if cr > 2.4:
+            continue
+        if nsp > 0.85 and alp < -1.0:
+            continue
+        if norm == streak_text:
+            streak += 1
+            if streak >= 3:
+                continue
+        else:
+            streak_text, streak = norm, 1
+        kept.append({k: v for k, v in seg.items() if k not in ("no_speech_prob", "avg_logprob", "compression_ratio")})
+    return kept
+
+
+# ---- personal dictionary → decoding hint ----------------------------------------------------
+MAX_HINTS = 40
+HINT_RE = re.compile(r"^[\w][\w'\-.]{0,29}$", re.UNICODE)
+
+
+def sanitize_hints(raw) -> list[str]:
+    """Names / brand words the user taught us; whitelisted, deduped, capped."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen = set()
+    for h in raw:
+        if not isinstance(h, str):
+            continue
+        h = h.strip()
+        if not HINT_RE.match(h) or h.lower() in seen:
+            continue
+        seen.add(h.lower())
+        out.append(h)
+        if len(out) >= MAX_HINTS:
+            break
+    return out
+
+
+# English words Israelis drop into Hebrew speech. Without a hint the model transliterates them
+# ("honestly" → "אונסטלי", "awesome" → "עושם"); with the word in the prompt it keeps Latin script.
+# Verified 2026-09-07: a pure-Hebrew clip transcribes identically with this list present.
+DEFAULT_HINTS = [
+    # kept short on purpose: the prompt's pull fades with length (41 words → "honestly" came back
+    # transliterated again; 5 words → every English word kept Latin script). brand names are left
+    # out — Israelis write "אינסטגרם" in Hebrew letters anyway.
+    "honestly", "awesome", "whatever", "literally", "basically", "vibe",
+    "cringe", "random", "okay", "sorry", "story", "content",
+]
+
+
+def hints_prompt(hints: list[str], defaults: list[str] = DEFAULT_HINTS) -> str | None:
+    """
+    Whisper reads the prompt as preceding transcript text, so hand it the words as a Hebrew list.
+    The user's own words come first (names matter most), then the shared loanword list.
+    """
+    seen = {h.lower() for h in hints}
+    words = list(hints) + [d for d in defaults if d.lower() not in seen]
+    return f"מילים: {', '.join(words)}." if words else None
+
+
+HEB_PREFIX_RE = re.compile(r"(?<![\w])([הובלמשכ]) -(?=[A-Za-z0-9])")
+
+
+def fix_prefix_gap(text: str) -> str:
+    """'את ה -Instagram' → 'את ה-Instagram': the model puts a space before the hyphen on Latin words."""
+    return HEB_PREFIX_RE.sub(r"\1-", text)
+
+
+def merge_prefix_words(words: list[dict]) -> list[dict]:
+    """
+    Word-level twin of fix_prefix_gap: a lone Hebrew prefix letter ('ה') followed by a '-Latin' token
+    becomes one word, so the karaoke highlight doesn't light up a single letter.
+    """
+    out: list[dict] = []
+    i = 0
+    while i < len(words):
+        w = words[i]
+        text = str(w.get("w", "")).strip()
+        nxt = words[i + 1] if i + 1 < len(words) else None
+        if nxt and len(text) == 1 and text in "הובלמשכ" and str(nxt.get("w", "")).strip().startswith("-"):
+            out.append({**w, "w": text + str(nxt.get("w", "")).strip(), "e": nxt.get("e", w.get("e"))})
+            i += 2
+            continue
+        out.append(w)
+        i += 1
+    return out
+
+
 def quota_decision(user: dict, now_ts: float) -> tuple[bool, str]:
     """
     Which allowance pays for the next video, in priority order:

@@ -10,6 +10,7 @@ Flow (the app never streams video through this service):
 Media lives in the bucket under src/ and out/; a bucket lifecycle rule deletes it after 1 day.
 """
 import os
+import re
 import subprocess
 import tempfile
 import uuid
@@ -39,6 +40,11 @@ from captions import (
     build_ass,
     canvas_for,
     check_key,
+    drop_hallucinations,
+    fix_prefix_gap,
+    hints_prompt,
+    merge_prefix_words,
+    sanitize_hints,
     clamp_font,
     consume,
     normalize_lines,
@@ -305,17 +311,31 @@ def transcribe(body: dict = Body(...), authorization: str | None = Header(defaul
             )
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return _err("decode_failed", 422)
-        segments, meta = get_model().transcribe(wav, word_timestamps=True, vad_filter=True)
+        hints = sanitize_hints(body.get("hints"))
+        segments, meta = get_model().transcribe(
+            wav,
+            word_timestamps=True,
+            vad_filter=True,
+            vad_parameters={"min_silence_duration_ms": 400},
+            # short clips: fresh context per window costs little and kills repetition loops
+            condition_on_previous_text=False,
+            initial_prompt=hints_prompt(hints),
+        )
         out = [
             {
                 "start": round(seg.start, 2),
                 "end": round(seg.end, 2),
-                "text": seg.text.strip(),
-                "words": [{"w": w.word, "s": round(w.start, 2), "e": round(w.end, 2)} for w in (seg.words or [])],
+                "text": fix_prefix_gap(seg.text.strip()),
+                "words": merge_prefix_words(
+                    [{"w": w.word, "s": round(w.start, 2), "e": round(w.end, 2)} for w in (seg.words or [])]
+                ),
+                "no_speech_prob": seg.no_speech_prob,
+                "avg_logprob": seg.avg_logprob,
+                "compression_ratio": seg.compression_ratio,
             }
             for seg in segments
         ]
-    out = strip_fillers(out)
+    out = strip_fillers(drop_hallucinations(out))
     # success → pay for it atomically and remember who owns this media (and whether it's free-tier)
     try:
         updated, paid_with = _consume_in_transaction(uid, _kind)
@@ -327,6 +347,56 @@ def transcribe(body: dict = Body(...), authorization: str | None = Header(defaul
     })
     return {"segments": out, "duration": round(meta.duration, 1), "media_id": media_id,
             "entitlements": _entitlements(updated)}
+
+
+EVENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{1,39}$")
+EVENTS_PER_DAY = 400
+
+
+@app.post("/event")
+def event(body: dict = Body(...), authorization: str | None = Header(default=None)):
+    """
+    Funnel + error telemetry from the app. Tiny on purpose: one Firestore doc per event, capped per
+    user per day, values truncated. This is the only feedback channel — the user does not talk to users.
+    """
+    if not _authorized(body):
+        return _err("unauthorized", 401)
+    try:
+        uid = _uid(authorization)
+    except AuthError as e:
+        return _err(e.code, e.status)
+    name = body.get("name")
+    if not isinstance(name, str) or not EVENT_NAME_RE.match(name):
+        return _err("bad_event", 400)
+    raw_props = body.get("props") if isinstance(body.get("props"), dict) else {}
+    props = {}
+    for k, v in list(raw_props.items())[:12]:
+        if not isinstance(k, str) or not EVENT_NAME_RE.match(k):
+            continue
+        if isinstance(v, bool) or isinstance(v, (int, float)):
+            props[k] = v
+        elif isinstance(v, str):
+            props[k] = v[:400]
+    day = time.strftime("%Y-%m-%d", time.gmtime())
+    ref = _user_ref(uid)
+
+    @fb_firestore.transactional
+    def _count(tx):
+        snap = ref.get(transaction=tx)
+        u = snap.to_dict() if snap.exists else {}
+        n = int(u.get("ev_count") or 0) if u.get("ev_day") == day else 0
+        if n >= EVENTS_PER_DAY:
+            return False
+        tx.set(ref, {"ev_day": day, "ev_count": n + 1}, merge=True)
+        return True
+
+    if not _count(db().transaction()):
+        return _err("too_many_events", 429)
+    db().collection("events").add({
+        "uid": uid, "name": name, "props": props, "ts": time.time(), "day": day,
+        "app": str(body.get("app") or "")[:40],
+    })
+    return {"ok": True}
 
 
 @app.post("/burn")

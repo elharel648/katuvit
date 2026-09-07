@@ -12,8 +12,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
+import { installErrorReporting, track } from '@/lib/analytics';
 import { fetchMe } from '@/lib/api';
 import { ensureSignedIn } from '@/lib/auth';
+import { loadSessions } from '@/lib/session';
 import { loadSettings } from '@/lib/settings';
 import { colors } from '@/lib/theme';
 
@@ -30,10 +32,15 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    loadSettings(); // persisted export quality / caption size, before any export
+    installErrorReporting();
+    loadSettings(); // persisted export quality / caption size / dictionary, before any export
+    loadSessions(); // the user's recent videos (and their edits) survive a restart
     // guest identity + entitlements; failures are non-fatal here (the first API call retries)
     ensureSignedIn()
-      .then(() => fetchMe())
+      .then(() => {
+        track('app_open');
+        return fetchMe();
+      })
       .catch((e) => console.log('[auth] boot sign-in failed', e));
   }, []);
 

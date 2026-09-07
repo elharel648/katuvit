@@ -47,8 +47,9 @@ import {
   toggleEmoji,
   toggleEmphasis,
 } from '@/lib/captions';
-import { getSession } from '@/lib/session';
-import { CAPTION_SIZE_FONT, CAPTION_SIZE_LABELS, getSettings, type CaptionSize } from '@/lib/settings';
+import { track } from '@/lib/analytics';
+import { getSession, updateSession } from '@/lib/session';
+import { CAPTION_SIZE_FONT, CAPTION_SIZE_LABELS, addToDictionary, getSettings, type CaptionSize } from '@/lib/settings';
 import { ACCENTS, ANIMATIONS, FONTS, FORMATS, POSITIONS, PRESET_Y, TEMPLATES, accentHex, fontFamily, formatAspect } from '@/lib/templates';
 import { colors, fonts } from '@/lib/theme';
 import type { CaptionLine, CaptionTemplate, StyleChoice, TranscriptSegment } from '@/lib/types';
@@ -82,6 +83,8 @@ export default function EditorScreen() {
   const videoUri = session?.videoUri ?? null;
 
   const initialLines = useMemo(() => {
+    // a reopened session comes back with the user's edits, not the raw transcript
+    if (session?.lines?.length) return session.lines;
     const segments =
       session?.segments ?? (demoTranscript as TranscriptSegment[]);
     return splitIntoLines(segments);
@@ -107,7 +110,16 @@ export default function EditorScreen() {
     setCanUndo(historyRef.current.length > 0);
   };
   const [captionSize, setCaptionSize] = useState<CaptionSize>(() => getSettings().captionSize);
-  const [style, setStyle] = useState<StyleChoice>(() => getSettings().defaultStyle);
+  const [style, setStyle] = useState<StyleChoice>(() => session?.style ?? getSettings().defaultStyle);
+  // edits and the chosen style outlive the screen (and the app)
+  useEffect(() => {
+    if (session) updateSession(session.id, { lines });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines]);
+  useEffect(() => {
+    if (session) updateSession(session.id, { style });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [style]);
   const templateId = style.template;
   const setTemplateId = (id: string) => setStyle((s) => ({ ...s, template: id }));
   const [studioTab, setStudioTab] = useState<'look' | 'color' | 'font' | 'position' | 'motion' | 'size' | 'format'>('look');
@@ -264,6 +276,7 @@ export default function EditorScreen() {
           onPress: (to?: string) => {
             if (!to?.trim()) return;
             commit((prev) => replaceWordEverywhere(prev, word, to).lines);
+            addToDictionary(to); // next transcription already knows this word
             if (editingLine) {
               const current = lines.find((l) => l.id === editingLine.id);
               if (current) setDraft(replaceWordEverywhere([current], word, to).lines[0].text);
@@ -326,6 +339,8 @@ export default function EditorScreen() {
     }
     setExportPhase('burning');
     setDownloadProgress(0);
+    const t0 = Date.now();
+    track('export_started', { template: style.template, format: style.format ?? 'original', lines: lines.length });
     try {
       const settings = getSettings();
       const uri = await burnAndDownload({
@@ -338,10 +353,13 @@ export default function EditorScreen() {
       // video is ready locally — success now; saving to Photos is a follow-up action
       setExportedUri(uri);
       setExportPhase('done');
+      track('export_done', { ms: Date.now() - t0 });
       saveToPhotos(uri, true); // quiet first attempt; the sheet offers a loud retry
     } catch (e) {
       setExportPhase('idle');
-      Alert.alert('הייצוא נכשל', e instanceof Error ? e.message : 'נסו שוב');
+      const message = e instanceof Error ? e.message : 'נסו שוב';
+      track('export_failed', { ms: Date.now() - t0, message: message.slice(0, 200) });
+      Alert.alert('הייצוא נכשל', message);
     }
   };
 
@@ -357,6 +375,7 @@ export default function EditorScreen() {
    */
   const postTo = async (target: 'instagram' | 'tiktok' | 'facebook' | 'more') => {
     if (!exportedUri) return;
+    track('share_tapped', { target });
     const shareSheet = () => Sharing.shareAsync(exportedUri, { mimeType: 'video/mp4', UTI: 'public.mpeg-4' });
     if (target === 'more' || target === 'facebook') {
       await shareSheet();
@@ -413,6 +432,7 @@ export default function EditorScreen() {
       }
       await MediaLibrary.saveToLibraryAsync(uri);
       setSavedToPhotos(true);
+      track('photos_saved');
     } catch (e) {
       console.log('[photos] save failed', e);
       if (!silent) {

@@ -12,9 +12,12 @@ export interface AppSettings {
   captionSize: CaptionSize;
   /** style the editor starts with */
   defaultStyle: StyleChoice;
+  /** names and brand words the user taught us; sent to the server as a decoding hint */
+  dictionary: string[];
 }
 
-const DEFAULTS: AppSettings = { exportQuality: '1080p', captionSize: 'medium', defaultStyle: DEFAULT_STYLE };
+export const DICTIONARY_MAX = 40;
+const DEFAULTS: AppSettings = { exportQuality: '1080p', captionSize: 'medium', defaultStyle: DEFAULT_STYLE, dictionary: [] };
 const KEY = 'katuvit.settings.v1';
 
 let cached: AppSettings = { ...DEFAULTS };
@@ -25,7 +28,12 @@ export async function loadSettings(): Promise<AppSettings> {
     const raw = await AsyncStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      cached = { ...DEFAULTS, ...parsed, defaultStyle: { ...DEFAULT_STYLE, ...(parsed.defaultStyle ?? {}) } };
+      cached = {
+        ...DEFAULTS,
+        ...parsed,
+        defaultStyle: { ...DEFAULT_STYLE, ...(parsed.defaultStyle ?? {}) },
+        dictionary: Array.isArray(parsed.dictionary) ? parsed.dictionary.filter((w: unknown) => typeof w === 'string') : [],
+      };
     }
   } catch {}
   return cached;
@@ -41,6 +49,18 @@ export async function updateSettings(patch: Partial<AppSettings>) {
   try {
     await AsyncStorage.setItem(KEY, JSON.stringify(cached));
   } catch {}
+}
+
+/** learn a word (from "replace everywhere" or a manual add); newest first, capped */
+export function addToDictionary(word: string) {
+  const w = word.trim();
+  if (!w || w.length > 30 || /\s/.test(w)) return;
+  const rest = cached.dictionary.filter((x) => x.toLowerCase() !== w.toLowerCase());
+  updateSettings({ dictionary: [w, ...rest].slice(0, DICTIONARY_MAX) });
+}
+
+export function removeFromDictionary(word: string) {
+  updateSettings({ dictionary: cached.dictionary.filter((x) => x !== word) });
 }
 
 /** react hook: settings value that re-renders on change */
